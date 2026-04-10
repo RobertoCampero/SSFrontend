@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, ChangeEvent } from 'react'
-import { productsService, clientsService, quotesService, inventoryService } from '@/lib/services'
-import type { Product, Client, Quote, QuoteItem } from '@/lib/types'
-import { Search, Plus, Trash2, ShoppingCart, User, Calculator, X } from 'lucide-react'
+import { useState, useEffect, useCallback, ChangeEvent } from 'react'
+import { productsService, clientsService, quotesService, inventoryService, categoriesService } from '@/lib/services'
+import type { Product, Client, Quote, QuoteItem, Category } from '@/lib/types'
+import { Search, Plus, Trash2, ShoppingCart, User, Calculator, X, Warehouse, ChevronLeft, ChevronRight, CreditCard, Clock, Receipt, Percent, FileDown } from 'lucide-react'
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute'
 import { Modal } from '@/components/ui/Modal'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/contexts/ToastContext'
+import { generateQuotePDF } from '@/lib/utils/pdf-generator'
 
 interface CartItem {
   product: Product
@@ -41,6 +42,12 @@ function POSContent() {
   const [creditDays, setCreditDays] = useState(30)
   const [createdQuote, setCreatedQuote] = useState<any>(null)
   const [showReceipt, setShowReceipt] = useState(false)
+  const [activeTab, setActiveTab] = useState<'carrito' | 'cliente' | 'cobrar' | 'historial'>('carrito')
+  const [categories, setCategories] = useState<Category[]>([])
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+  const [recentProducts, setRecentProducts] = useState<Product[]>([])
+  const [quotesHistory, setQuotesHistory] = useState<Quote[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
   const [newClientForm, setNewClientForm] = useState({
     name: '',
     documentType: 'RUT',
@@ -56,14 +63,11 @@ function POSContent() {
   useEffect(() => {
     loadProducts()
     loadClients()
-    
-    console.log('🔍 POS - Usuario cargado:', user)
-    console.log('🏢 POS - warehouseId del usuario:', user?.warehouseId)
+    loadCategories()
+    loadQuotesHistory()
     
     if (user?.warehouseId) {
       loadUserWarehouse()
-    } else {
-      console.warn('⚠️ Usuario NO tiene warehouseId asignado')
     }
   }, [user])
 
@@ -104,6 +108,27 @@ function POSContent() {
     }
   }
 
+  const loadCategories = async () => {
+    try {
+      const response = await categoriesService.list({ page: 1, limit: 100 })
+      setCategories(response.categories)
+    } catch (error) {
+      console.error('Error al cargar categorías:', error)
+    }
+  }
+
+  const loadQuotesHistory = async () => {
+    setLoadingHistory(true)
+    try {
+      const response = await quotesService.list({ page: 1, limit: 20 })
+      setQuotesHistory(response.quotes)
+    } catch (error) {
+      console.error('Error al cargar historial:', error)
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   const handleCreateClient = async () => {
     if (!newClientForm.name || !newClientForm.documentNum) {
       toast.warning('Campos requeridos', 'Nombre y documento son obligatorios')
@@ -131,10 +156,14 @@ function POSContent() {
     }
   }
 
-  const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(searchProduct.toLowerCase()) ||
-    p.sku?.toLowerCase().includes(searchProduct.toLowerCase())
-  )
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = !searchProduct || 
+      p.name.toLowerCase().includes(searchProduct.toLowerCase()) ||
+      p.sku?.toLowerCase().includes(searchProduct.toLowerCase())
+    const matchesCategory = !selectedCategory || 
+      String(p.categoryId) === selectedCategory
+    return matchesSearch && matchesCategory
+  })
 
   const filteredClients = clients.filter(c =>
     c.name.toLowerCase().includes(searchClient.toLowerCase()) ||
@@ -244,6 +273,11 @@ function POSContent() {
     }
     setShowProductSearch(false)
     setSearchProduct('')
+    // Trackear producto reciente
+    setRecentProducts(prev => {
+      const filtered = prev.filter(p => String(p.id) !== String(product.id))
+      return [product, ...filtered].slice(0, 10)
+    })
   }
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -390,6 +424,7 @@ function POSContent() {
       setCart([])
       setSelectedClient(null)
       setCreditDescription('')
+      loadQuotesHistory()
       setCreditDays(30)
       setPaymentType('CONTADO')
       
@@ -404,40 +439,306 @@ function POSContent() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-100">
       {/* Header */}
-      <div className="bg-white border-b px-6 py-4">
+      <div className="bg-white border-b px-4 py-2.5 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-primary-100 rounded-lg">
-              <ShoppingCart className="text-primary-600" size={24} />
+            <div className="p-2 bg-blue-600 rounded-lg">
+              <ShoppingCart className="text-white" size={20} />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Punto de Venta</h1>
-              <p className="text-sm text-gray-500">Crea cotizaciones rápidamente</p>
+              <h1 className="text-lg font-bold text-gray-900">Punto de Venta</h1>
+              <p className="text-xs text-gray-400">
+                {userWarehouse?.name || 'Crea cotizaciones rápidamente'}
+              </p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {userWarehouse && (
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg text-sm text-gray-700">
+                <Warehouse size={16} />
+                <span>{userWarehouse.name}</span>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Panel - Cart */}
-        <div className="w-[640px] flex flex-col bg-gray-50 border-r">
-          {/* Client Selection */}
-          <div className="p-4 bg-white border-b relative">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <input
-                  type="text"
-                  placeholder="Buscar cliente..."
-                  value={searchClient}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchClient(e.target.value)}
-                  onFocus={() => setShowClientSearch(true)}
-                  className="input pl-10"
-                />
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-                {showClientSearch && !selectedClient && searchClient && (
-                  <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border rounded-lg shadow-xl max-h-60 overflow-y-auto">
+        {/* ===== LEFT PANEL - Products ===== */}
+        <div className="flex-1 flex flex-col bg-white border-r">
+          {/* Search Bar */}
+          <div className="p-4 border-b">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+              <input
+                type="text"
+                placeholder="Buscar producto, SKU o escanear código..."
+                className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                value={searchProduct}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setSearchProduct(e.target.value)
+                  setShowProductSearch(true)
+                }}
+                onFocus={() => setShowProductSearch(true)}
+              />
+            </div>
+          </div>
+
+          {/* Category Chips */}
+          {categories.length > 0 && (
+            <div className="px-4 py-3 border-b flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedCategory(null)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                  !selectedCategory ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                }`}
+              >
+                Todos
+              </button>
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(selectedCategory === String(cat.id) ? null : String(cat.id))}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                    selectedCategory === String(cat.id) ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                  }`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Products Area */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Recent Products */}
+            {!searchProduct && recentProducts.length > 0 && (
+              <div className="mb-6">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Recientes</p>
+                <div className="flex flex-wrap gap-3">
+                  {recentProducts.map(product => (
+                    <button
+                      key={product.id}
+                      onClick={() => addToCart(product)}
+                      className="flex items-center gap-3 px-3 py-2 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all"
+                    >
+                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-xs shrink-0">
+                        {product.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="text-left">
+                        <div className="font-medium text-sm text-gray-900 truncate max-w-[120px]">{product.name}</div>
+                        <div className="text-xs font-semibold text-blue-600">Bs. {product.salePrice?.toFixed(2)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Search Results or All Products */}
+            {(searchProduct || selectedCategory) ? (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
+                  {filteredProducts.length} productos encontrados
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {filteredProducts.map(product => (
+                    <button
+                      key={product.id}
+                      onClick={() => addToCart(product)}
+                      className="flex items-center gap-3 p-3 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
+                    >
+                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-sm shrink-0">
+                        {product.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm text-gray-900 truncate">{product.name}</div>
+                        <div className="text-xs font-semibold text-blue-600">Bs. {product.salePrice?.toFixed(2)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : !recentProducts.length ? (
+              <div className="text-center text-gray-400 mt-20">
+                <Search size={48} className="mx-auto mb-3 opacity-30" />
+                <p className="text-sm">Busca productos para agregarlos al carrito</p>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {/* ===== RIGHT PANEL - Cart & Tabs ===== */}
+        <div className="w-[400px] flex flex-col bg-white">
+          {/* Tabs */}
+          <div className="flex border-b">
+            {[
+              { id: 'carrito' as const, label: 'Carrito', icon: <ShoppingCart size={16} /> },
+              { id: 'cliente' as const, label: 'Cliente', icon: <User size={16} /> },
+              { id: 'cobrar' as const, label: 'Cobrar', icon: <CreditCard size={16} /> },
+              { id: 'historial' as const, label: 'Historial', icon: <Clock size={16} /> },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600 bg-blue-50/50'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Content */}
+          <div className="flex-1 overflow-y-auto flex flex-col">
+            {/* ---- TAB: CARRITO ---- */}
+            {activeTab === 'carrito' && (
+              <>
+                {/* Cart Header */}
+                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50">
+                  <span className="text-sm font-medium text-gray-700">{cart.length} producto{cart.length !== 1 ? 's' : ''}</span>
+                  <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
+                    <Percent size={14} />
+                    Descuento
+                  </button>
+                </div>
+
+                {/* Cart Items */}
+                <div className="flex-1 overflow-y-auto">
+                  {cart.length === 0 ? (
+                    <div className="text-center text-gray-400 mt-16 px-4">
+                      <ShoppingCart size={40} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">El carrito está vacío</p>
+                      <p className="text-xs mt-1">Busca y agrega productos</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y">
+                      {cart.map(item => (
+                        <div key={item.product.id} className="flex items-center gap-3 px-4 py-3">
+                          {/* Product avatar */}
+                          <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-sm shrink-0">
+                            {item.product.name.charAt(0).toUpperCase()}
+                          </div>
+
+                          {/* Product info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm text-gray-900 truncate">{item.product.name}</div>
+                            <div className="text-xs text-gray-400">
+                              Bs. {item.price.toFixed(2)} x {item.quantity}
+                            </div>
+                          </div>
+
+                          {/* Quantity controls */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => updateQuantity(String(item.product.id), item.quantity - 1)}
+                              className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
+                              title="Disminuir cantidad"
+                            >
+                              <ChevronLeft size={14} />
+                            </button>
+                            <span className="w-8 text-center text-sm font-semibold">{item.quantity}</span>
+                            <button
+                              onClick={() => updateQuantity(String(item.product.id), item.quantity + 1)}
+                              className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
+                              title="Aumentar cantidad"
+                            >
+                              <ChevronRight size={14} />
+                            </button>
+                          </div>
+
+                          {/* Price */}
+                          <div className="text-right w-20 shrink-0">
+                            <div className="font-bold text-sm text-gray-900">Bs. {item.subtotal.toFixed(2)}</div>
+                          </div>
+
+                          {/* Delete */}
+                          <button
+                            onClick={() => removeFromCart(String(item.product.id))}
+                            className="text-gray-300 hover:text-red-500 transition-colors"
+                            title="Eliminar"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Cart Footer - Total & Actions */}
+                {cart.length > 0 && (
+                  <div className="border-t bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between py-2 px-3 bg-blue-50 rounded-lg">
+                      <span className="font-bold text-blue-900">TOTAL</span>
+                      <span className="text-xl font-bold text-blue-900">
+                        Bs. {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setActiveTab('cobrar')}
+                      className="btn-primary w-full"
+                    >
+                      Cobrar
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ---- TAB: CLIENTE ---- */}
+            {activeTab === 'cliente' && (
+              <div className="p-4 space-y-4">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                    <input
+                      type="text"
+                      placeholder="Buscar cliente..."
+                      value={searchClient}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchClient(e.target.value)}
+                      onFocus={() => setShowClientSearch(true)}
+                      className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setShowNewClientModal(true)}
+                    className="btn-primary flex items-center gap-1 text-sm px-3"
+                    title="Crear nuevo cliente"
+                  >
+                    <Plus size={16} />
+                    Nuevo
+                  </button>
+                </div>
+
+                {selectedClient && (
+                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold">
+                          {selectedClient.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-semibold text-sm text-blue-900">{selectedClient.name}</div>
+                          <div className="text-xs text-blue-600">{selectedClient.documentType}: {selectedClient.documentNum}</div>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedClient(null)} className="text-blue-400 hover:text-blue-600" title="Quitar cliente">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {showClientSearch && searchClient && (
+                  <div className="border rounded-lg shadow-sm max-h-60 overflow-y-auto">
                     {filteredClients.map(client => (
                       <button
                         key={client.id}
@@ -446,298 +747,205 @@ function POSContent() {
                           setShowClientSearch(false)
                           setSearchClient('')
                         }}
-                        className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+                        className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center gap-3"
                       >
-                        <div className="font-medium">{client.name}</div>
-                        <div className="text-sm text-gray-500">{client.email}</div>
+                        <div className="w-8 h-8 rounded-full bg-gray-200 text-gray-600 flex items-center justify-center text-sm font-bold">
+                          {client.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-medium text-sm">{client.name}</div>
+                          <div className="text-xs text-gray-500">{client.email}</div>
+                        </div>
                       </button>
                     ))}
                   </div>
                 )}
-              </div>
-              <button
-                onClick={() => setShowNewClientModal(true)}
-                className="btn-primary flex items-center gap-2 whitespace-nowrap"
-                title="Crear nuevo cliente"
-              >
-                <Plus size={18} />
-                Nuevo
-              </button>
-            </div>
-          </div>
 
-          {/* Selected Client Info */}
-          {selectedClient && (
-            <div className="px-4 py-3 bg-blue-50 border-b border-blue-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <User size={16} className="text-blue-600" />
-                  <div>
-                    <div className="font-semibold text-sm text-blue-900">{selectedClient.name}</div>
-                    <div className="text-xs text-blue-600">{selectedClient.documentType}: {selectedClient.documentNum}</div>
+                {!selectedClient && !searchClient && (
+                  <div className="text-center text-gray-400 mt-8">
+                    <User size={40} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Selecciona un cliente</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ---- TAB: COBRAR ---- */}
+            {activeTab === 'cobrar' && (
+              <div className="p-4 space-y-4 flex-1">
+                {!selectedClient && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                    Debes seleccionar un cliente primero
+                  </div>
+                )}
+
+                <div>
+                  <label htmlFor="pos-quote-type" className="text-xs font-medium text-gray-500 mb-1 block">Tipo de Cotización</label>
+                  <select
+                    id="pos-quote-type"
+                    value={quoteType}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      const value = e.target.value as 'PRODUCTOS' | 'SERVICIOS'
+                      setQuoteType(value)
+                      if (value === 'SERVICIOS') window.location.href = '/servicios'
+                    }}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="PRODUCTOS">Productos</option>
+                    <option value="SERVICIOS">Servicios</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label htmlFor="pos-payment-type" className="text-xs font-medium text-gray-500 mb-1 block">Tipo de Pago</label>
+                  <select
+                    id="pos-payment-type"
+                    value={paymentType}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentType(e.target.value as 'CONTADO' | 'CREDITO')}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="CONTADO">Contado</option>
+                    <option value="CREDITO">Crédito</option>
+                  </select>
+                </div>
+
+                {paymentType !== 'CONTADO' && (
+                  <div className="space-y-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-xs font-semibold text-blue-900">Información del Crédito</p>
+                    <div>
+                      <label htmlFor="pos-credit-days" className="text-xs text-gray-500 mb-1 block">Plazo (días) *</label>
+                      <input
+                        id="pos-credit-days"
+                        type="number"
+                        min="1"
+                        value={creditDays}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCreditDays(Number(e.target.value))}
+                        className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
+                        placeholder="30"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="pos-credit-description" className="text-xs text-gray-500 mb-1 block">Descripción del Pago *</label>
+                      <textarea
+                        id="pos-credit-description"
+                        value={creditDescription}
+                        onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCreditDescription(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2 text-sm outline-none"
+                        rows={2}
+                        placeholder="Ej: Transferencia bancaria, cheques..."
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Total Summary */}
+                <div className="space-y-2 p-3 bg-gray-50 rounded-lg">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Productos</span>
+                    <span>{cart.length}</span>
+                  </div>
+                  {cart.some(item => item.discount > 0) && (
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Descuento</span>
+                      <span>- Bs {cart.reduce((sum, item) => sum + (item.price * item.quantity * item.discount / 100), 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-lg border-t pt-2">
+                    <span>Total</span>
+                    <span className="text-blue-600">Bs. {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
+
                 <button
-                  onClick={() => setSelectedClient(null)}
-                  className="text-blue-600 hover:text-blue-800"
-                  title="Cambiar cliente"
+                  onClick={handleCreateQuote}
+                  disabled={!selectedClient || cart.length === 0}
+                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed py-3 text-sm"
                 >
-                  <X size={16} />
+                  Crear Cotización
                 </button>
               </div>
-            </div>
-          )}
-
-          {/* Cart Items - Invoice Style */}
-          <div className="flex-1 overflow-y-auto">
-            {cart.length === 0 ? (
-              <div className="text-center text-gray-400 mt-20 px-4">
-                <ShoppingCart size={48} className="mx-auto mb-3 opacity-50" />
-                <p>El carrito está vacío</p>
-                <p className="text-xs mt-2">Busca y agrega productos para crear una cotización</p>
-              </div>
-            ) : (
-<div className="p-4">
-  <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
-
-    {/* Header */}
-    <div className="grid grid-cols-6 gap-2 px-4 py-3 bg-gray-100 text-sm font-semibold text-center">
-      <div>ITEM</div>
-      <div className="text-left">PRODUCTO</div>
-      <div>CANTIDAD</div>
-      <div>PRECIO UNITARIO</div>
-      <div>SUBTOTAL</div>
-      <div>OPCIONES</div>
-    </div>
-
-    {/* Body */}
-    <div>
-      {cart.map((item, index) => (
-        <div
-          key={item.product.id}
-          className="grid grid-cols-6 gap-2 px-4 py-3 border-t items-center text-sm"
-        >
-          {/* ITEM */}
-          <div className="text-center">{index + 1}</div>
-
-          {/* PRODUCTO */}
-          <div className="text-left">{item.product.name}</div>
-
-          {/* CANTIDAD */}
-          <div className="flex justify-center">
-            <input
-              type="number"
-              min="1"
-              value={item.quantity}
-              onChange={(e) =>
-                updateQuantity(
-                  String(item.product.id),
-                  parseInt(e.target.value) || 0
-                )
-              }
-              className="w-16 text-center border rounded-md px-1 py-0.5"
-            />
-          </div>
-
-          {/* PRECIO */}
-          <div className="flex justify-center">
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={item.price}
-              onChange={(e) =>
-                updatePrice(
-                  String(item.product.id),
-                  parseFloat(e.target.value) || 0
-                )
-              }
-              className="w-24 text-right border rounded-md px-1 py-0.5"
-            />
-          </div>
-
-          {/* SUBTOTAL */}
-          <div className="text-right font-medium">
-            Bs. {item.subtotal.toFixed(2)}
-          </div>
-
-          {/* OPCIONES */}
-          <div className="flex justify-center">
-            <button
-              onClick={() => removeFromCart(String(item.product.id))}
-              className="p-2 text-red-600 hover:text-white hover:bg-red-600 rounded-md transition-colors border border-red-300 hover:border-red-600"
-              title="Eliminar producto"
-            >
-              <X size={18} />
-            </button>
-          </div>
-        </div>
-      ))}
-    </div>
-
-  </div>
-</div>
-            )}
-          </div>
-
-          {/* Total & Actions */}
-          <div className="p-4 bg-white border-t space-y-3">
-            <div className="space-y-2 pb-3 border-b">
-              {cart.some(item => item.discount > 0) && (
-                <div className="flex justify-between text-sm">
-                  <span className="text-green-600">Descuento:</span>
-                  <span className="font-medium text-green-600">
-                    - Bs {cart.reduce((sum, item) => sum + (item.price * item.quantity * item.discount / 100), 0).toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              )}
-            </div>
-            
-            {/* Total */}
-            <div className="flex items-center justify-between py-2 bg-blue-50 px-3 rounded-lg">
-              <div className="flex items-center gap-2 text-blue-900">
-                <Calculator size={20} />
-                <span className="font-bold text-lg">TOTAL:</span>
-              </div>
-              <div className="text-2xl font-bold text-blue-900">
-                Bs {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </div>
-            </div>
-
-            {/* Tipo de Cotización y Pago */}
-            <div className="space-y-3 mb-4">
-              <div>
-                <label htmlFor="pos-quote-type" className="label text-xs">Tipo de Cotización</label>
-<select
-  id="pos-quote-type"
-  value={quoteType}
-  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value as 'PRODUCTOS' | 'SERVICIOS';
-    setQuoteType(value);
-
-    if (value === 'SERVICIOS') {
-      window.location.href = '/servicios';
-    }
-  }}
-  className="input text-sm"
->
-  <option value="PRODUCTOS">Productos</option>
-  <option value="SERVICIOS">Servicios</option>
-</select>
-              </div>
-              <div>
-                <label htmlFor="pos-payment-type" className="label text-xs">Tipo de Pago</label>
-                <select
-                  id="pos-payment-type"
-                  value={paymentType}
-                  onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPaymentType(e.target.value as 'CONTADO' | 'CREDITO')}
-                  className="input text-sm"
-                >
-                  <option value="CONTADO">Contado</option>
-                  <option value="CREDITO">Crédito</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Campos adicionales para pago a crédito */}
-            {paymentType !== 'CONTADO' && (
-              <div className="space-y-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h4 className="text-sm font-semibold text-blue-900">Información del Crédito</h4>
-                
-                <div>
-                  <label htmlFor="pos-credit-days" className="label text-xs">Plazo (días) *</label>
-                  <input
-                    id="pos-credit-days"
-                    type="number"
-                    min="1"
-                    value={creditDays}
-                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setCreditDays(Number(e.target.value))}
-                    className="input text-sm"
-                    placeholder="30"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="pos-credit-description" className="label text-xs">Descripción del Pago *</label>
-                  <textarea
-                    id="pos-credit-description"
-                    value={creditDescription}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCreditDescription(e.target.value)}
-                    className="input text-sm"
-                    rows={3}
-                    placeholder="Describe cómo pagará el cliente (ej: Transferencia bancaria, cheques, etc.)"
-                  />
-                  <p className="text-xs text-blue-600 mt-1">
-                    Especifica la forma de pago acordada con el cliente
-                  </p>
-                </div>
-              </div>
             )}
 
-            <button
-              onClick={handleCreateQuote}
-              disabled={!selectedClient || cart.length === 0}
-              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Crear Cotización
-            </button>
-          </div>
-        </div>
-<button
-  onClick={() => setShowRightPanel(prev => !prev)}
-  className="px-3 py-2 bg-gray-200 rounded-md"
->
-  {showRightPanel ? "Ocultar productos" : "Mostrar productos"}
-</button>
-         {/* Right Panel */}
-  {showRightPanel && (
-    <div className="w-1/3 flex flex-col bg-white border-l transition-all">
-      {/* Search */}
-      <div className="p-4 border-b">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
-          <input
-            type="text"
-            placeholder="Buscar productos por nombre o SKU..."
-            className="input pl-10"
-            value={searchProduct}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-              setSearchProduct(e.target.value)
-              setShowProductSearch(true)
-            }}
-            onFocus={() => setShowProductSearch(true)}
-          />
-        </div>
-      </div>
-
-      {/* Products Grid */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {showProductSearch && searchProduct ? (
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredProducts.map(product => (
-              <button
-                key={product.id}
-                onClick={() => addToCart(product)}
-                className="p-4 border rounded-lg hover:border-primary-500 hover:bg-primary-50 transition-all text-left"
-              >
-                <div className="font-medium text-gray-900">{product.name}</div>
-                <div className="text-sm text-gray-500">{product.sku}</div>
-                <div className="text-lg font-bold text-primary-600 mt-2">
-                  Bs.- {product.salePrice?.toLocaleString()}
+            {/* ---- TAB: HISTORIAL ---- */}
+            {activeTab === 'historial' && (
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Últimas cotizaciones</p>
+                  <button
+                    onClick={loadQuotesHistory}
+                    className="text-xs text-blue-600 hover:text-blue-800"
+                    title="Recargar historial"
+                  >
+                    Actualizar
+                  </button>
                 </div>
-              </button>
-            ))}
+
+                {loadingHistory ? (
+                  <div className="text-center text-gray-400 mt-8">
+                    <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2" />
+                    <p className="text-xs">Cargando...</p>
+                  </div>
+                ) : quotesHistory.length === 0 ? (
+                  <div className="text-center text-gray-400 mt-8">
+                    <Clock size={40} className="mx-auto mb-2 opacity-30" />
+                    <p className="text-sm">Sin cotizaciones aún</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {quotesHistory.map(q => {
+                      const statusColors: Record<string, string> = {
+                        DRAFT: 'bg-gray-100 text-gray-600',
+                        PENDING: 'bg-yellow-100 text-yellow-700',
+                        APPROVED: 'bg-green-100 text-green-700',
+                        REJECTED: 'bg-red-100 text-red-600',
+                      }
+                      const statusLabels: Record<string, string> = {
+                        DRAFT: 'Borrador',
+                        PENDING: 'Pendiente',
+                        APPROVED: 'Aprobada',
+                        REJECTED: 'Rechazada',
+                      }
+                      const status = (q as any).status || 'DRAFT'
+                      return (
+                        <button
+                          key={q.id}
+                          onClick={() => {
+                            setCreatedQuote(q)
+                            setShowReceipt(true)
+                          }}
+                          className="w-full text-left py-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                            <Receipt size={16} className="text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-sm text-gray-900 truncate">
+                                #{(q as any).quoteNumber || q.id}
+                              </span>
+                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[status] || 'bg-gray-100 text-gray-600'}`}>
+                                {statusLabels[status] || status}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-400 truncate">
+                              {(q as any).client?.name || 'Sin cliente'} · {q.createdAt ? new Date(q.createdAt).toLocaleDateString('es-BO') : ''}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="font-bold text-sm text-gray-900">
+                              Bs. {Number((q as any).grandTotal ?? (q as any).total ?? 0).toFixed(2)}
+                            </div>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        ) : (
-          <div className="text-center text-gray-400 mt-20">
-            <Search size={48} className="mx-auto mb-3 opacity-50" />
-            <p>Busca productos para agregarlos al carrito</p>
-          </div>
-        )}
+        </div>
       </div>
-    </div>
-  )}
-</div>
 
       {/* Modal para crear cliente */}
       <Modal
@@ -857,83 +1065,96 @@ function POSContent() {
     setShowReceipt(false)
     setCreatedQuote(null)
   }}
-  title=""
-  size="xl"
+  title="Cotización"
+  size="full"
 >
   {createdQuote && (
-    <div className="bg-white text-sm text-gray-800 p-6">
+    <div className="bg-white text-sm text-gray-800 p-8 max-w-4xl mx-auto">
+
+      {/* LÍNEA AZUL SUPERIOR */}
+      <div className="h-1 bg-blue-800 mb-6" />
 
       {/* HEADER */}
-      <div className="border-b pb-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <img src="/logo1.png" alt="Logo" className="w-32 mb-2" />
-            <p className="text-xs">NIT: 333314024</p>
-            <p className="text-xs">CORREO: srlsmartservices@gmail.com</p>
-          </div>
-
-          <div className="text-right text-xs space-y-1">
-            <p>
-              <span className="font-semibold">N° DE COTIZACIÓN:</span>{" "}
-              {createdQuote.quoteNumber ?? createdQuote.id}
-            </p>
-            <p>
-              <span className="font-semibold">FECHA:</span>{" "}
-              {createdQuote.createdAt
-                ? new Date(createdQuote.createdAt).toLocaleDateString("es-BO")
-                : new Date().toLocaleDateString("es-BO")}
-            </p>
-            <p>
-              <span className="font-semibold">VÁLIDA HASTA:</span>{" "}
-              {createdQuote.validUntil
-                ? new Date(createdQuote.validUntil).toLocaleDateString("es-BO")
-                : ""}
-            </p>
-            <p>
-              <span className="font-semibold">VERSIÓN:</span>{" "}
-              {createdQuote.version ?? 1}
-            </p>
-          </div>
+      <div className="flex justify-between items-start">
+        <div>
+          <img src="/logo1.png" alt="Smart Services SRL" className="w-40 mb-3" />
+          <table className="text-xs">
+            <tbody>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5">NIT:</td>
+                <td className="border-b border-gray-300 py-0.5 w-48">333314024</td>
+              </tr>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5">Correo:</td>
+                <td className="border-b border-gray-300 py-0.5">srlsmartservices@gmail.com</td>
+              </tr>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5">Teléfono:</td>
+                <td className="border-b border-gray-300 py-0.5">77299562 / 75812336</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        <h1 className="text-center text-lg font-bold text-blue-800 mt-4">
-          {createdQuote.quoteType === "SERVICIOS"
-            ? "COTIZACIÓN DE SERVICIOS"
-            : "COTIZACIÓN"}
-        </h1>
-      </div>
-
-      {/* SECCIÓN DATOS */}
-      <div className="mt-6">
-        <div className="bg-blue-800 text-white text-center py-2 font-semibold">
-          DATOS
-        </div>
-
-        <div className="mt-4 space-y-2">
-          <p>
-            <span className="font-semibold">NOMBRE:</span>{" "}
-            {createdQuote.client?.name}
-          </p>
-          <p>
-            <span className="font-semibold">TIPO:</span>{" "}
-            {createdQuote.quoteType === "SERVICIOS"
-              ? "COTIZACIÓN DE SERVICIOS"
-              : "COTIZACIÓN DE PRODUCTOS"}
-          </p>
+        <div className="text-right">
+          <h1 className="text-3xl font-bold text-blue-800 mb-4">COTIZACIÓN</h1>
+          <table className="text-xs ml-auto">
+            <tbody>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5 text-right">N° Cotización:</td>
+                <td className="border-b border-gray-300 py-0.5 text-right w-32">{createdQuote.quoteNumber ?? createdQuote.id}</td>
+              </tr>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5 text-right">Fecha:</td>
+                <td className="border-b border-gray-300 py-0.5 text-right">
+                  {createdQuote.createdAt
+                    ? new Date(createdQuote.createdAt).toLocaleDateString("es-BO")
+                    : new Date().toLocaleDateString("es-BO")}
+                </td>
+              </tr>
+              <tr>
+                <td className="font-bold text-blue-800 pr-3 py-0.5 text-right">Válido hasta:</td>
+                <td className="border-b border-gray-300 py-0.5 text-right">
+                  {createdQuote.validUntil
+                    ? new Date(createdQuote.validUntil).toLocaleDateString("es-BO")
+                    : ""}
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {/* CLIENTE Y CREADO POR */}
+      <div className="mt-8 space-y-2">
+        <div className="flex items-baseline gap-3">
+          <span className="font-bold text-blue-800 text-xs whitespace-nowrap">Cliente:</span>
+          <span className="border-b border-gray-300 flex-1 text-xs pb-0.5">{createdQuote.client?.name || 'Sin cliente'}</span>
+        </div>
+        <div className="flex items-baseline gap-3">
+          <span className="font-bold text-blue-800 text-xs whitespace-nowrap">Creado por:</span>
+          <span className="border-b border-gray-300 flex-1 text-xs pb-0.5">
+            {createdQuote.creator?.fullName || createdQuote.creator?.username || user?.fullName || user?.username || 'N/A'}
+            {createdQuote.creator?.fullName || createdQuote.creator?.username
+              ? ''
+              : user?.userRoles?.[0]?.role?.name ? ` - ${user.userRoles[0].role.name}` : ''}
+          </span>
+        </div>
+      </div>
+
+      {/* LÍNEA SEPARADORA */}
+      <div className="border-b border-gray-300 mt-6 mb-6" />
 
       {/* TABLA */}
-      <div className="mt-6 overflow-x-auto">
-        <table className="w-full border border-gray-300 text-xs">
-          <thead className="bg-blue-800 text-white">
-            <tr>
-              <th className="border px-2 py-2">ÍTEM</th>
-              <th className="border px-2 py-2">UNIDAD</th>
-              <th className="border px-2 py-2 text-left">DESCRIPCIÓN</th>
-              <th className="border px-2 py-2">CANTIDAD</th>
-              <th className="border px-2 py-2 text-right">PRECIO</th>
-              <th className="border px-2 py-2 text-right">TOTAL</th>
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-xs">
+          <thead>
+            <tr className="bg-blue-800 text-white">
+              <th className="border border-blue-700 px-3 py-2 w-12 text-center">Ítem</th>
+              <th className="border border-blue-700 px-3 py-2 text-left">Descripción</th>
+              <th className="border border-blue-700 px-3 py-2 w-14 text-center">Cant.</th>
+              <th className="border border-blue-700 px-3 py-2 w-24 text-right">Precio</th>
+              <th className="border border-blue-700 px-3 py-2 w-24 text-right">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -942,87 +1163,74 @@ function POSContent() {
                 const quantity = Number(item.quantity ?? 0)
                 const unitPrice = Number(item.unitPrice ?? 0)
                 const discount = Number(item.discount ?? 0)
-
-                const total =
-                  quantity * unitPrice * (1 - discount / 100)
+                const total = quantity * unitPrice * (1 - discount / 100)
 
                 return (
-                  <tr key={index}>
-                    <td className="border px-2 py-2 text-center">
-                      {index + 1}
-                    </td>
-                    <td className="border px-2 py-2 text-center">
-                      {item.itemType === "SERVICE"
-                        ? "SERVICIO"
-                        : "PRODUCTO"}
-                    </td>
-                    <td className="border px-2 py-2 whitespace-pre-line">
-                      {item.description}
-                    </td>
-                    <td className="border px-2 py-2 text-center">
-                      {quantity}
-                    </td>
-                    <td className="border px-2 py-2 text-right">
-                      {unitPrice.toFixed(2)}
-                    </td>
-                    <td className="border px-2 py-2 text-right">
-                      {total.toFixed(2)}
-                    </td>
+                  <tr key={index} className="border-b">
+                    <td className="border border-gray-300 px-3 py-2 text-center">{index + 1}</td>
+                    <td className="border border-gray-300 px-3 py-2">{item.description}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-center">{quantity}</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">{unitPrice.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs</td>
+                    <td className="border border-gray-300 px-3 py-2 text-right">{total.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs</td>
                   </tr>
                 )
               }
             )}
+            {/* Subtotal row */}
+            <tr>
+              <td className="border border-gray-300 px-3 py-2" colSpan={3}></td>
+              <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-800">Subtotal:</td>
+              <td className="border border-gray-300 px-3 py-2 text-right">
+                {Number(createdQuote.subtotal ?? 0).toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs
+              </td>
+            </tr>
+            {/* Son + TOTAL row */}
+            <tr>
+              <td className="border border-gray-300 px-3 py-2 font-bold text-blue-800">Son:</td>
+              <td className="border border-gray-300 px-3 py-2" colSpan={2}>
+                {createdQuote.notes || createdQuote.observations || ''}
+              </td>
+              <td className="border border-gray-300 px-3 py-2 text-right font-bold text-blue-800">TOTAL:</td>
+              <td className="border border-gray-300 px-3 py-2 text-right font-bold">
+                {Number(createdQuote.grandTotal ?? createdQuote.total ?? 0).toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
 
-      {/* TOTALES */}
-      <div className="mt-6 flex justify-end">
-        <div className="w-64 space-y-2 text-sm">
-          <div className="flex justify-between">
-            <span>Subtotal Bs.</span>
-            <span>
-              {Number(createdQuote.subtotal ?? 0).toFixed(2)}
-            </span>
-          </div>
-
-          {createdQuote.discountPercent &&
-            createdQuote.discountPercent > 0 && (
-              <div className="flex justify-between text-green-600">
-                <span>
-                  Descuento ({createdQuote.discountPercent}%)
-                </span>
-                <span>
-                  -
-                  {(
-                    (Number(createdQuote.subtotal ?? 0) *
-                      createdQuote.discountPercent) /
-                    100
-                  ).toFixed(2)}
-                </span>
-              </div>
-            )}
-
-          <div className="flex justify-between font-bold text-blue-800 border-t pt-2">
-            <span>TOTAL Bs.</span>
-            <span>
-              {Number(
-                createdQuote.grandTotal ??
-                  createdQuote.total ??
-                  0
-              ).toFixed(2)}
-            </span>
-          </div>
+      {/* CONDICIONES */}
+      <div className="mt-8">
+        <div className="bg-blue-800 text-white text-center py-2 font-bold text-sm">
+          Condiciones:
+        </div>
+        <div className="border border-gray-300 border-t-0 p-4 text-xs space-y-1">
+          {createdQuote.termsConditions ? (
+            <p className="whitespace-pre-line">{createdQuote.termsConditions}</p>
+          ) : (
+            <>
+              <p>• Incluye impuestos</p>
+              <p>• Validez: {createdQuote.deliveryTime || '10 días'}</p>
+              <p>• Forma de pago: {createdQuote.paymentType === 'CREDITO' ? `Crédito` : 'Contra entrega'}</p>
+              <p>• Tiempo de entrega: Coordinado con el cliente</p>
+            </>
+          )}
         </div>
       </div>
 
+      {/* FOOTER */}
+      <div className="mt-6 border-t border-gray-300 pt-4">
+        <p className="text-center text-xs text-gray-500">Si tiene algún otro problema consulte con nuestros soportes.</p>
+      </div>
+
       {/* BOTONES */}
-      <div className="flex justify-end gap-3 mt-8 border-t pt-4 print:hidden">
+      <div className="flex justify-end gap-3 mt-6 pt-4 border-t print:hidden">
         <button
-          onClick={() => window.print()}
-          className="btn-secondary"
+          onClick={() => generateQuotePDF({ quote: createdQuote })}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
         >
-          Imprimir
+          <FileDown size={16} />
+          Descargar PDF
         </button>
         <button
           onClick={() => {

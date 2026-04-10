@@ -11,3 +11,4 @@ export { excelService } from './excel.service';
 export { usersService } from './users.service';
 export { unitsService } from './units.service';
 export { creditsService } from './credits.service';
+export { notificationsService } from './notifications.service';

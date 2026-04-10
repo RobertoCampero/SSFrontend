@@ -765,3 +765,41 @@ export interface CategoryMapping {
   excelName: string;
   categoryId: number;
 }
+
+// ===== NOTIFICACIONES =====
+export type NotificationType =
+  | 'INFO'
+  | 'WARNING'
+  | 'SUCCESS'
+  | 'ERROR'
+  | 'STOCK_LOW'
+  | 'QUOTE_APPROVED'
+  | 'QUOTE_REJECTED'
+  | 'ORDER_COMPLETED'
+  | 'PAYMENT_RECEIVED';
+
+export interface Notification {
+  id: string;
+  userId: number;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link?: string;
+  read: boolean;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export interface NotificationsResponse {
+  notifications: Notification[];
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}

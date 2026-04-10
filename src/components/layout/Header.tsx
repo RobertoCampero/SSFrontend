@@ -1,10 +1,10 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Bell, Search, User, ChevronRight, Home, LogOut } from 'lucide-react'
-import Link from 'next/link'
+import { User, LogOut } from 'lucide-react'
 import { authService } from '@/lib/services'
 import { useAuth } from '@/hooks/useAuth'
+import { NotificationBell } from './NotificationBell'
 
 const pathLabels: Record<string, string> = {
   '': 'Dashboard',
@@ -43,16 +43,13 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-gray-100 bg-white/80 backdrop-blur-sm px-6">
+    <header className="relative z-[100] flex h-14 items-center justify-between border-b border-gray-100 bg-white/80 backdrop-blur-sm px-6">
       <div className="flex-1">
         {/* Espacio vacío - eliminado breadcrumbs */}
       </div>
 
       <div className="flex items-center gap-2">
-        <button type="button" aria-label="Notificaciones" className="relative rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all duration-200">
-          <Bell size={19} />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-        </button>
+        <NotificationBell />
         <div className="h-6 w-px bg-gray-200 mx-1" />
         <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 hover:bg-gray-50 transition-all duration-200 cursor-pointer">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-700 text-white shadow-sm">

@@ -8,7 +8,7 @@ interface ModalProps {
   onClose: () => void
   title: string
   children: React.ReactNode
-  size?: 'sm' | 'md' | 'lg' | 'xl'
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
 }
 
 const sizeClasses = {
@@ -16,6 +16,7 @@ const sizeClasses = {
   md: 'max-w-lg',
   lg: 'max-w-2xl',
   xl: 'max-w-4xl',
+  full: 'max-w-[95vw] w-full',
 }
 
 export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
@@ -47,7 +48,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
             <X size={20} />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-6 py-5">
+        <div className={`overflow-y-auto px-6 py-5 ${size === 'full' ? 'max-h-[85vh]' : 'max-h-[70vh]'}`}>
           {children}
         </div>
       </div>
