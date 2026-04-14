@@ -570,155 +570,18 @@ function POSContent() {
           </div>
         </div>
 
-        {/* ===== RIGHT PANEL - Cart & Tabs ===== */}
+        {/* ===== RIGHT PANEL - Cliente + Carrito + Cobrar (all visible) ===== */}
         <div className="w-[400px] flex flex-col bg-white">
-          {/* Tabs */}
-          <div className="flex border-b">
-            {[
-              { id: 'carrito' as const, label: 'Carrito', icon: <ShoppingCart size={16} /> },
-              { id: 'cliente' as const, label: 'Cliente', icon: <User size={16} /> },
-              { id: 'cobrar' as const, label: 'Cobrar', icon: <CreditCard size={16} /> },
-              { id: 'historial' as const, label: 'Historial', icon: <Clock size={16} /> },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium border-b-2 transition-colors ${
-                  activeTab === tab.id
-                    ? 'border-blue-600 text-blue-600 bg-blue-50/50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.icon}
-                {tab.label}
-              </button>
-            ))}
-          </div>
+          <div className="flex-1 overflow-y-auto">
 
-          {/* Tab Content */}
-          <div className="flex-1 overflow-y-auto flex flex-col">
-            {/* ---- TAB: CARRITO ---- */}
-            {activeTab === 'carrito' && (
-              <>
-                {/* Cart Header */}
-                <div className="flex items-center justify-between px-4 py-2.5 border-b bg-gray-50">
-                  <span className="text-sm font-medium text-gray-700">{cart.length} producto{cart.length !== 1 ? 's' : ''}</span>
-                  <button className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800">
-                    <Percent size={14} />
-                    Descuento
-                  </button>
-                </div>
-
-                {/* Cart Items */}
-                <div className="flex-1 overflow-y-auto">
-                  {cart.length === 0 ? (
-                    <div className="text-center text-gray-400 mt-16 px-4">
-                      <ShoppingCart size={40} className="mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">El carrito está vacío</p>
-                      <p className="text-xs mt-1">Busca y agrega productos</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y">
-                      {cart.map(item => (
-                        <div key={item.product.id} className="flex items-center gap-3 px-4 py-3">
-                          {/* Product avatar */}
-                          <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-sm shrink-0">
-                            {item.product.name.charAt(0).toUpperCase()}
-                          </div>
-
-                          {/* Product info */}
-                          <div className="flex-1 min-w-0">
-                            <div className="font-semibold text-sm text-gray-900 truncate">{item.product.name}</div>
-                            <div className="text-xs text-gray-400">
-                              Bs. {item.price.toFixed(2)} x {item.quantity}
-                            </div>
-                          </div>
-
-                          {/* Quantity controls */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => updateQuantity(String(item.product.id), item.quantity - 1)}
-                              className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
-                              title="Disminuir cantidad"
-                            >
-                              <ChevronLeft size={14} />
-                            </button>
-                            <span className="w-8 text-center text-sm font-semibold">{item.quantity}</span>
-                            <button
-                              onClick={() => updateQuantity(String(item.product.id), item.quantity + 1)}
-                              className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
-                              title="Aumentar cantidad"
-                            >
-                              <ChevronRight size={14} />
-                            </button>
-                          </div>
-
-                          {/* Price */}
-                          <div className="text-right w-20 shrink-0">
-                            <div className="font-bold text-sm text-gray-900">Bs. {item.subtotal.toFixed(2)}</div>
-                          </div>
-
-                          {/* Delete */}
-                          <button
-                            onClick={() => removeFromCart(String(item.product.id))}
-                            className="text-gray-300 hover:text-red-500 transition-colors"
-                            title="Eliminar"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Cart Footer - Total & Actions */}
-                {cart.length > 0 && (
-                  <div className="border-t bg-white p-4 space-y-3">
-                    <div className="flex items-center justify-between py-2 px-3 bg-blue-50 rounded-lg">
-                      <span className="font-bold text-blue-900">TOTAL</span>
-                      <span className="text-xl font-bold text-blue-900">
-                        Bs. {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={() => setActiveTab('cobrar')}
-                      className="btn-primary w-full"
-                    >
-                      Cobrar
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* ---- TAB: CLIENTE ---- */}
-            {activeTab === 'cliente' && (
-              <div className="p-4 space-y-4">
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                    <input
-                      type="text"
-                      placeholder="Buscar cliente..."
-                      value={searchClient}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchClient(e.target.value)}
-                      onFocus={() => setShowClientSearch(true)}
-                      className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    />
-                  </div>
-                  <button
-                    onClick={() => setShowNewClientModal(true)}
-                    className="btn-primary flex items-center gap-1 text-sm px-3"
-                    title="Crear nuevo cliente"
-                  >
-                    <Plus size={16} />
-                    Nuevo
-                  </button>
-                </div>
-
-                {selectedClient && (
+            {/* ======== SECCIÓN: CLIENTE ======== */}
+            <div className="border-b">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b">
+                <User size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Cliente</span>
+              </div>
+              <div className="p-4 space-y-3">
+                {selectedClient ? (
                   <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -735,10 +598,32 @@ function POSContent() {
                       </button>
                     </div>
                   </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                      <input
+                        type="text"
+                        placeholder="Buscar cliente..."
+                        value={searchClient}
+                        onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchClient(e.target.value)}
+                        onFocus={() => setShowClientSearch(true)}
+                        className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                    <button
+                      onClick={() => setShowNewClientModal(true)}
+                      className="btn-primary flex items-center gap-1 text-sm px-3"
+                      title="Crear nuevo cliente"
+                    >
+                      <Plus size={16} />
+                      Nuevo
+                    </button>
+                  </div>
                 )}
 
                 {showClientSearch && searchClient && (
-                  <div className="border rounded-lg shadow-sm max-h-60 overflow-y-auto">
+                  <div className="border rounded-lg shadow-sm max-h-48 overflow-y-auto">
                     {filteredClients.map(client => (
                       <button
                         key={client.id}
@@ -760,25 +645,108 @@ function POSContent() {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
 
-                {!selectedClient && !searchClient && (
-                  <div className="text-center text-gray-400 mt-8">
-                    <User size={40} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Selecciona un cliente</p>
-                  </div>
+            {/* ======== SECCIÓN: CARRITO ======== */}
+            <div className="border-b">
+              <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart size={16} className="text-blue-600" />
+                  <span className="text-sm font-medium text-gray-700">Carrito</span>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">{cart.length}</span>
+                </div>
+                {cart.length > 0 && (
+                  <span className="text-xs text-gray-400">{cart.reduce((s, i) => s + i.quantity, 0)} uds.</span>
                 )}
               </div>
-            )}
 
-            {/* ---- TAB: COBRAR ---- */}
-            {activeTab === 'cobrar' && (
-              <div className="p-4 space-y-4 flex-1">
-                {!selectedClient && (
-                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                    Debes seleccionar un cliente primero
-                  </div>
-                )}
+              {cart.length === 0 ? (
+                <div className="text-center text-gray-400 py-10 px-4">
+                  <ShoppingCart size={40} className="mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">El carrito está vacío</p>
+                  <p className="text-xs mt-1">Busca y agrega productos</p>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {cart.map(item => (
+                    <div key={item.product.id} className="flex items-center gap-3 px-4 py-3">
+                      {/* Product avatar */}
+                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-sm shrink-0">
+                        {item.product.name.charAt(0).toUpperCase()}
+                      </div>
 
+                      {/* Product info + editable price */}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-sm text-gray-900 truncate">{item.product.name}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className="text-xs text-gray-400">Bs.</span>
+                          <input
+                            type="number"
+                            value={item.price}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                              const val = parseFloat(e.target.value)
+                              if (!isNaN(val) && val >= 0) updatePrice(String(item.product.id), val)
+                            }}
+                            className="w-20 text-xs border rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500 outline-none"
+                            step="0.01"
+                            min="0"
+                            title="Editar precio (descuento)"
+                          />
+                          {item.discount > 0 && (
+                            <span className="text-[10px] text-green-600 font-medium">-{item.discount.toFixed(1)}%</span>
+                          )}
+                        </div>
+                        {item.stockWarning && (
+                          <p className="text-[10px] text-red-500 mt-0.5">Stock: {item.availableStock}</p>
+                        )}
+                      </div>
+
+                      {/* Quantity controls */}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => updateQuantity(String(item.product.id), item.quantity - 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
+                          title="Disminuir cantidad"
+                        >
+                          <ChevronLeft size={14} />
+                        </button>
+                        <span className="w-8 text-center text-sm font-semibold">{item.quantity}</span>
+                        <button
+                          onClick={() => updateQuantity(String(item.product.id), item.quantity + 1)}
+                          className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
+                          title="Aumentar cantidad"
+                        >
+                          <ChevronRight size={14} />
+                        </button>
+                      </div>
+
+                      {/* Subtotal */}
+                      <div className="text-right w-20 shrink-0">
+                        <div className="font-bold text-sm text-gray-900">Bs. {item.subtotal.toFixed(2)}</div>
+                      </div>
+
+                      {/* Delete */}
+                      <button
+                        onClick={() => removeFromCart(String(item.product.id))}
+                        className="text-gray-300 hover:text-red-500 transition-colors"
+                        title="Eliminar"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ======== SECCIÓN: COBRAR ======== */}
+            <div className="border-b">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 border-b">
+                <CreditCard size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Cobrar</span>
+              </div>
+              <div className="p-4 space-y-4">
                 <div>
                   <label htmlFor="pos-quote-type" className="text-xs font-medium text-gray-500 mb-1 block">Tipo de Cotización</label>
                   <select
@@ -847,7 +815,7 @@ function POSContent() {
                   {cart.some(item => item.discount > 0) && (
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Descuento</span>
-                      <span>- Bs {cart.reduce((sum, item) => sum + (item.price * item.quantity * item.discount / 100), 0).toFixed(2)}</span>
+                      <span>- Bs {cart.reduce((sum, item) => sum + ((item.originalPrice - item.price) * item.quantity), 0).toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-lg border-t pt-2">
@@ -855,94 +823,121 @@ function POSContent() {
                     <span className="text-blue-600">Bs. {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                   </div>
                 </div>
-
-                <button
-                  onClick={handleCreateQuote}
-                  disabled={!selectedClient || cart.length === 0}
-                  className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed py-3 text-sm"
-                >
-                  Crear Cotización
-                </button>
               </div>
-            )}
+            </div>
 
-            {/* ---- TAB: HISTORIAL ---- */}
-            {activeTab === 'historial' && (
-              <div className="p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Últimas cotizaciones</p>
-                  <button
-                    onClick={loadQuotesHistory}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                    title="Recargar historial"
-                  >
-                    Actualizar
-                  </button>
+            {/* ======== SECCIÓN: HISTORIAL (colapsable) ======== */}
+            <div>
+              <button
+                onClick={() => {
+                  setActiveTab(activeTab === 'historial' ? 'carrito' : 'historial')
+                  if (activeTab !== 'historial') loadQuotesHistory()
+                }}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-gray-50 hover:bg-gray-100 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <Clock size={16} className="text-blue-600" />
+                  <span className="text-sm font-medium text-gray-700">Historial</span>
                 </div>
+                <ChevronRight size={14} className={`text-gray-400 transition-transform ${activeTab === 'historial' ? 'rotate-90' : ''}`} />
+              </button>
 
-                {loadingHistory ? (
-                  <div className="text-center text-gray-400 mt-8">
-                    <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2" />
-                    <p className="text-xs">Cargando...</p>
+              {activeTab === 'historial' && (
+                <div className="p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Últimas cotizaciones</p>
+                    <button
+                      onClick={loadQuotesHistory}
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                      title="Recargar historial"
+                    >
+                      Actualizar
+                    </button>
                   </div>
-                ) : quotesHistory.length === 0 ? (
-                  <div className="text-center text-gray-400 mt-8">
-                    <Clock size={40} className="mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">Sin cotizaciones aún</p>
-                  </div>
-                ) : (
-                  <div className="divide-y">
-                    {quotesHistory.map(q => {
-                      const statusColors: Record<string, string> = {
-                        DRAFT: 'bg-gray-100 text-gray-600',
-                        PENDING: 'bg-yellow-100 text-yellow-700',
-                        APPROVED: 'bg-green-100 text-green-700',
-                        REJECTED: 'bg-red-100 text-red-600',
-                      }
-                      const statusLabels: Record<string, string> = {
-                        DRAFT: 'Borrador',
-                        PENDING: 'Pendiente',
-                        APPROVED: 'Aprobada',
-                        REJECTED: 'Rechazada',
-                      }
-                      const status = (q as any).status || 'DRAFT'
-                      return (
-                        <button
-                          key={q.id}
-                          onClick={() => {
-                            setCreatedQuote(q)
-                            setShowReceipt(true)
-                          }}
-                          className="w-full text-left py-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
-                            <Receipt size={16} className="text-blue-600" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm text-gray-900 truncate">
-                                #{(q as any).quoteNumber || q.id}
-                              </span>
-                              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[status] || 'bg-gray-100 text-gray-600'}`}>
-                                {statusLabels[status] || status}
-                              </span>
+
+                  {loadingHistory ? (
+                    <div className="text-center text-gray-400 py-6">
+                      <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full mx-auto mb-2" />
+                      <p className="text-xs">Cargando...</p>
+                    </div>
+                  ) : quotesHistory.length === 0 ? (
+                    <div className="text-center text-gray-400 py-6">
+                      <Clock size={40} className="mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Sin cotizaciones aún</p>
+                    </div>
+                  ) : (
+                    <div className="divide-y max-h-60 overflow-y-auto">
+                      {quotesHistory.map(q => {
+                        const statusColors: Record<string, string> = {
+                          DRAFT: 'bg-gray-100 text-gray-600',
+                          PENDING: 'bg-yellow-100 text-yellow-700',
+                          APPROVED: 'bg-green-100 text-green-700',
+                          REJECTED: 'bg-red-100 text-red-600',
+                        }
+                        const statusLabels: Record<string, string> = {
+                          DRAFT: 'Borrador',
+                          PENDING: 'Pendiente',
+                          APPROVED: 'Aprobada',
+                          REJECTED: 'Rechazada',
+                        }
+                        const status = (q as any).status || 'DRAFT'
+                        return (
+                          <button
+                            key={q.id}
+                            onClick={() => {
+                              setCreatedQuote(q)
+                              setShowReceipt(true)
+                            }}
+                            className="w-full text-left py-3 hover:bg-gray-50 transition-colors flex items-center gap-3"
+                          >
+                            <div className="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
+                              <Receipt size={16} className="text-blue-600" />
                             </div>
-                            <div className="text-xs text-gray-400 truncate">
-                              {(q as any).client?.name || 'Sin cliente'} · {q.createdAt ? new Date(q.createdAt).toLocaleDateString('es-BO') : ''}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-gray-900 truncate">
+                                  #{(q as any).quoteNumber || q.id}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${statusColors[status] || 'bg-gray-100 text-gray-600'}`}>
+                                  {statusLabels[status] || status}
+                                </span>
+                              </div>
+                              <div className="text-xs text-gray-400 truncate">
+                                {(q as any).client?.name || 'Sin cliente'} · {q.createdAt ? new Date(q.createdAt).toLocaleDateString('es-BO') : ''}
+                              </div>
                             </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <div className="font-bold text-sm text-gray-900">
-                              Bs. {Number((q as any).grandTotal ?? (q as any).total ?? 0).toFixed(2)}
+                            <div className="text-right shrink-0">
+                              <div className="font-bold text-sm text-gray-900">
+                                Bs. {Number((q as any).grandTotal ?? (q as any).total ?? 0).toFixed(2)}
+                              </div>
                             </div>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* ======== FOOTER: TOTAL + BOTÓN CREAR ======== */}
+          <div className="border-t bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between py-2 px-3 bg-blue-50 rounded-lg">
+              <span className="font-bold text-blue-900">TOTAL</span>
+              <span className="text-xl font-bold text-blue-900">
+                Bs. {calculateTotal().toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+
+            <button
+              onClick={handleCreateQuote}
+              disabled={!selectedClient || cart.length === 0}
+              className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed py-3 text-sm"
+            >
+              Crear Cotización
+            </button>
           </div>
         </div>
       </div>

@@ -69,10 +69,10 @@ function TransfersContent() {
 
   const getAvailableStock = () => {
     if (!productStock || !form.fromWarehouseId) return 0
-    const warehouseStock = productStock.stockByWarehouse?.find(
+    const warehouseStock = productStock.warehouses?.find(
       (s: any) => String(s.warehouseId) === String(form.fromWarehouseId)
     )
-    return warehouseStock?.quantity || 0
+    return warehouseStock?.stock || 0
   }
 
   const handleTransfer = async () => {
