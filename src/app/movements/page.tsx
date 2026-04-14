@@ -1,24 +1,57 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { ArrowRightLeft, Search, Filter, Download, ArrowUpCircle, ArrowDownCircle, RefreshCw, Edit3 } from 'lucide-react'
-import { inventoryService } from '@/lib/services/inventory.service'
-import type { InventoryMovement, MovementType } from '@/lib/types'
+import { useState, useEffect, useMemo } from 'react'
+import { ArrowRightLeft, Search, Filter, Download, ArrowUpCircle, ArrowDownCircle, RefreshCw, Edit3, Warehouse } from 'lucide-react'
+import { inventoryService, productsService } from '@/lib/services'
+import type { InventoryMovement, MovementType, Product, Warehouse as WarehouseType } from '@/lib/types'
 
 export default function MovementsPage() {
   const [movements, setMovements] = useState<InventoryMovement[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState<MovementType | ''>('')
+  const [filterWarehouse, setFilterWarehouse] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [total, setTotal] = useState(0)
   const limit = 20
 
+  // Lookup maps for enriching movements
+  const productMap = useMemo(() => {
+    const map = new Map<number, Product>()
+    products.forEach(p => map.set(p.id, p))
+    return map
+  }, [products])
+
+  const warehouseMap = useMemo(() => {
+    const map = new Map<number, WarehouseType>()
+    warehouses.forEach(w => map.set(w.id, w))
+    return map
+  }, [warehouses])
+
+  useEffect(() => {
+    loadReferenceData()
+  }, [])
+
   useEffect(() => {
     loadMovements()
   }, [currentPage, filterType])
+
+  const loadReferenceData = async () => {
+    try {
+      const [prodRes, whRes] = await Promise.all([
+        productsService.list({ page: 1, limit: 1000 }),
+        inventoryService.listWarehouses(),
+      ])
+      setProducts((prodRes as any).products || [])
+      setWarehouses(whRes.warehouses || [])
+    } catch (err) {
+      console.error('Error cargando datos de referencia:', err)
+    }
+  }
 
   const loadMovements = async () => {
     try {
@@ -32,30 +65,14 @@ export default function MovementsPage() {
         params.type = filterType
       }
 
-      console.log('🔍 Cargando movimientos con params:', params)
       const response = await inventoryService.listMovements(params)
-      console.log('📦 Respuesta completa del servidor:', JSON.stringify(response, null, 2))
-      console.log('📊 Movimientos recibidos:', response.movements?.length || 0)
-      console.log('📄 Paginación:', response.pagination)
-      
-      if (response.movements && response.movements.length > 0) {
-        console.log('✅ Primer movimiento:', response.movements[0])
-      } else {
-        console.log('⚠️ No hay movimientos en la respuesta')
-      }
       
       setMovements(response.movements || [])
       setTotalPages(response.pagination?.totalPages || 1)
       setTotal(response.pagination?.total || 0)
     } catch (error: any) {
-      console.error('Error completo al cargar movimientos:', error)
-      console.error('Mensaje de error:', error?.message)
-      console.error('Respuesta del servidor:', error?.response)
-      
-      // Mostrar error más detallado
       const errorMessage = error?.response?.data?.error || error?.message || 'Error desconocido al cargar movimientos'
       console.error('Error al cargar movimientos:', errorMessage)
-      
       setError(errorMessage)
       setMovements([])
       setTotal(0)
@@ -64,6 +81,11 @@ export default function MovementsPage() {
       setLoading(false)
     }
   }
+
+  // Enrich movement with product/warehouse data
+  const getProductName = (m: InventoryMovement) => m.product?.name || productMap.get(m.productId)?.name || `Producto #${m.productId}`
+  const getProductSku = (m: InventoryMovement) => m.product?.sku || productMap.get(m.productId)?.sku || ''
+  const getWarehouseName = (m: InventoryMovement) => m.warehouse?.name || warehouseMap.get(m.warehouseId)?.name || `Almacén #${m.warehouseId}`
 
   const getMovementTypeIcon = (type: MovementType) => {
     switch (type) {
@@ -115,12 +137,13 @@ export default function MovementsPage() {
   }
 
   const filteredMovements = movements.filter(movement => {
+    if (filterWarehouse && String(movement.warehouseId) !== filterWarehouse) return false
     if (!searchTerm) return true
     const search = searchTerm.toLowerCase()
     return (
-      movement.product?.name.toLowerCase().includes(search) ||
-      movement.product?.sku.toLowerCase().includes(search) ||
-      movement.warehouse?.name.toLowerCase().includes(search)
+      getProductName(movement).toLowerCase().includes(search) ||
+      getProductSku(movement).toLowerCase().includes(search) ||
+      getWarehouseName(movement).toLowerCase().includes(search)
     )
   })
 
@@ -162,6 +185,18 @@ export default function MovementsPage() {
                 <option value="EGRESO">Egresos</option>
                 <option value="TRANSFERENCIA">Transferencias</option>
                 <option value="AJUSTE">Ajustes</option>
+              </select>
+              <select
+                id="movements-filter-warehouse"
+                value={filterWarehouse}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterWarehouse(e.target.value)}
+                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                aria-label="Filtrar por almacén"
+              >
+                <option value="">Todos los almacenes</option>
+                {warehouses.filter(w => w.isActive).map(w => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
               </select>
               <button
                 onClick={loadMovements}
@@ -227,19 +262,19 @@ export default function MovementsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">{movement.product?.name}</div>
-                        <div className="text-xs text-gray-500">SKU: {movement.product?.sku}</div>
+                        <div className="text-sm font-medium text-gray-900">{getProductName(movement)}</div>
+                        <div className="text-xs text-gray-500">SKU: {getProductSku(movement)}</div>
                       </td>
                       <td className="px-4 py-3">
                         {movement.type === 'TRANSFERENCIA' && movement.notes ? (
                           <div className="text-sm">
-                            <div className="text-gray-900 font-medium">{movement.warehouse?.name}</div>
+                            <div className="text-gray-900 font-medium">{getWarehouseName(movement)}</div>
                             <div className="text-xs text-gray-500 mt-1">
                               <span className="text-blue-600">↔ Transferencia</span>
                             </div>
                           </div>
                         ) : (
-                          <div className="text-sm text-gray-900">{movement.warehouse?.name}</div>
+                          <div className="text-sm text-gray-900">{getWarehouseName(movement)}</div>
                         )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">

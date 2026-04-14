@@ -60,7 +60,6 @@ const navigation: NavItem[] = [
       { label: 'Almacenes', href: '/warehouses', permission: 'products.stock' },
       { label: 'Stock', href: '/stock', permission: 'products.stock' },
       { label: 'Transferencias', href: '/transfers', permission: 'products.stock' },
-      { label: 'Movimientos', href: '/movements', permission: 'inventory.movements' },
       { label: 'Kits', href: '/kits', permission: 'kits.view' },
     ],
   },

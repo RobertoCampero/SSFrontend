@@ -7,8 +7,8 @@ import {
   DollarSign, ShoppingCart, RefreshCw, Calendar, Filter,
   ChevronDown, ChevronUp, FileText, AlertTriangle
 } from 'lucide-react'
-import { inventoryService, quotesService, usersService } from '@/lib/services'
-import type { InventoryMovement, MovementType, Quote, User, Warehouse as WarehouseType } from '@/lib/types'
+import { inventoryService, quotesService, usersService, productsService } from '@/lib/services'
+import type { InventoryMovement, MovementType, Quote, User, Product, Warehouse as WarehouseType } from '@/lib/types'
 
 type ReportTab = 'resumen' | 'almacenes' | 'vendedores' | 'movimientos'
 
@@ -35,6 +35,7 @@ export default function ReportsPage() {
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [warehouses, setWarehouses] = useState<WarehouseType[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [products, setProducts] = useState<Product[]>([])
 
   const [movementFilterType, setMovementFilterType] = useState<MovementType | ''>('')
   const [movementFilterWarehouse, setMovementFilterWarehouse] = useState('')
@@ -48,22 +49,41 @@ export default function ReportsPage() {
   const loadAllData = async () => {
     try {
       setLoading(true)
-      const [movRes, quoteRes, whRes, userRes] = await Promise.all([
+      const [movRes, quoteRes, whRes, userRes, prodRes] = await Promise.all([
         inventoryService.listMovements({ page: 1, limit: 500 }),
         quotesService.list({ page: 1, limit: 500 }),
         inventoryService.listWarehouses(),
         usersService.list({ page: 1, limit: 100 }),
+        productsService.list({ page: 1, limit: 1000 }),
       ])
       setMovements(movRes.movements || [])
       setQuotes((quoteRes as any).quotes || [])
       setWarehouses(whRes.warehouses || [])
       setUsers((userRes as any).users || [])
+      setProducts((prodRes as any).products || [])
     } catch (err) {
       console.error('Error cargando datos de reportes:', err)
     } finally {
       setLoading(false)
     }
   }
+
+  // Lookup maps for enriching movements
+  const productMap = useMemo(() => {
+    const map = new Map<number, Product>()
+    products.forEach(p => map.set(p.id, p))
+    return map
+  }, [products])
+
+  const warehouseMap = useMemo(() => {
+    const map = new Map<number, WarehouseType>()
+    warehouses.forEach(w => map.set(w.id, w))
+    return map
+  }, [warehouses])
+
+  const getProductName = (m: InventoryMovement) => m.product?.name || productMap.get(m.productId)?.name || `Producto #${m.productId}`
+  const getProductSku = (m: InventoryMovement) => m.product?.sku || productMap.get(m.productId)?.sku || ''
+  const getWarehouseName = (m: InventoryMovement) => m.warehouse?.name || warehouseMap.get(m.warehouseId)?.name || `Almacén #${m.warehouseId}`
 
   // Filter by date range
   const filteredMovements = useMemo(() => {
@@ -289,6 +309,7 @@ export default function ReportsPage() {
             value={dateRange.from}
             onChange={e => setDateRange(prev => ({ ...prev, from: e.target.value }))}
             className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            aria-label="Fecha desde"
           />
           <span className="text-gray-400">—</span>
           <input
@@ -296,6 +317,7 @@ export default function ReportsPage() {
             value={dateRange.to}
             onChange={e => setDateRange(prev => ({ ...prev, to: e.target.value }))}
             className="border rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            aria-label="Fecha hasta"
           />
         </div>
         <div className="flex gap-2 text-xs">
@@ -547,8 +569,8 @@ export default function ReportsPage() {
                                       </div>
                                     </td>
                                     <td className="px-4 py-2.5">
-                                      <div className="font-medium text-gray-900">{m.product?.name}</div>
-                                      <div className="text-xs text-gray-400">{m.product?.sku}</div>
+                                      <div className="font-medium text-gray-900">{getProductName(m)}</div>
+                                      <div className="text-xs text-gray-400">{getProductSku(m)}</div>
                                     </td>
                                     <td className="px-4 py-2.5 text-center">
                                       <span className={`font-semibold ${m.type === 'INGRESO' ? 'text-green-600' : m.type === 'EGRESO' ? 'text-red-600' : 'text-blue-600'}`}>
@@ -701,6 +723,7 @@ export default function ReportsPage() {
                     value={movementFilterType}
                     onChange={e => setMovementFilterType(e.target.value as MovementType | '')}
                     className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    aria-label="Filtrar por tipo de movimiento"
                   >
                     <option value="">Todos los tipos</option>
                     <option value="INGRESO">Ingresos</option>
@@ -713,6 +736,7 @@ export default function ReportsPage() {
                   value={movementFilterWarehouse}
                   onChange={e => setMovementFilterWarehouse(e.target.value)}
                   className="border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  aria-label="Filtrar por almacén"
                 >
                   <option value="">Todos los almacenes</option>
                   {warehouses.filter(w => w.isActive).map(w => (
@@ -751,10 +775,10 @@ export default function ReportsPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900">{m.product?.name}</div>
-                            <div className="text-xs text-gray-400">{m.product?.sku}</div>
+                            <div className="font-medium text-gray-900">{getProductName(m)}</div>
+                            <div className="text-xs text-gray-400">{getProductSku(m)}</div>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{m.warehouse?.name}</td>
+                          <td className="px-4 py-3 text-gray-700">{getWarehouseName(m)}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`font-semibold ${m.type === 'INGRESO' ? 'text-green-600' : m.type === 'EGRESO' ? 'text-red-600' : 'text-blue-600'}`}>
                               {m.type === 'INGRESO' ? '+' : m.type === 'EGRESO' ? '-' : '±'}{m.quantity}
