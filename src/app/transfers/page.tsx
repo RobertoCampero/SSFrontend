@@ -69,10 +69,15 @@ function TransfersContent() {
 
   const getAvailableStock = () => {
     if (!productStock || !form.fromWarehouseId) return 0
-    const warehouseStock = productStock.warehouses?.find(
-      (s: any) => String(s.warehouseId) === String(form.fromWarehouseId)
+    // API returns array directly, or object with warehouses/stockByWarehouse
+    const whList = Array.isArray(productStock)
+      ? productStock
+      : (productStock.warehouses || productStock.stockByWarehouse || productStock.stock || [])
+    const entry = whList.find(
+      (s: any) => String(s.warehouseId ?? s.warehouse_id ?? s.id) === String(form.fromWarehouseId)
     )
-    return warehouseStock?.stock || 0
+    if (!entry) return 0
+    return entry.quantity ?? entry.stock ?? entry.currentStock ?? 0
   }
 
   const handleTransfer = async () => {
@@ -203,7 +208,7 @@ function TransfersContent() {
               </select>
               {form.fromWarehouseId && productStock && (
                 <p className="mt-2 text-sm text-gray-600">
-                  Stock disponible: <span className="font-semibold">{availableStock}</span> unidades
+                  Stock disponible: {availableStock} unidades
                 </p>
               )}
             </div>

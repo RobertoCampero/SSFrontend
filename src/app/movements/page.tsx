@@ -19,18 +19,6 @@ export default function MovementsPage() {
   const [total, setTotal] = useState(0)
   const limit = 20
 
-  // Lookup maps for enriching movements
-  const productMap = useMemo(() => {
-    const map = new Map<number, Product>()
-    products.forEach(p => map.set(p.id, p))
-    return map
-  }, [products])
-
-  const warehouseMap = useMemo(() => {
-    const map = new Map<number, WarehouseType>()
-    warehouses.forEach(w => map.set(w.id, w))
-    return map
-  }, [warehouses])
 
   useEffect(() => {
     loadReferenceData()
@@ -66,7 +54,6 @@ export default function MovementsPage() {
       }
 
       const response = await inventoryService.listMovements(params)
-      
       setMovements(response.movements || [])
       setTotalPages(response.pagination?.totalPages || 1)
       setTotal(response.pagination?.total || 0)
@@ -82,10 +69,31 @@ export default function MovementsPage() {
     }
   }
 
-  // Enrich movement with product/warehouse data
-  const getProductName = (m: InventoryMovement) => m.product?.name || productMap.get(m.productId)?.name || `Producto #${m.productId}`
-  const getProductSku = (m: InventoryMovement) => m.product?.sku || productMap.get(m.productId)?.sku || ''
-  const getWarehouseName = (m: InventoryMovement) => m.warehouse?.name || warehouseMap.get(m.warehouseId)?.name || `Almacén #${m.warehouseId}`
+  // Helpers matching real API structure: items[], warehouseFrom/To, note
+  const getMovItems = (m: any) => m.items || []
+  const getMovProductName = (m: any) => {
+    const items = getMovItems(m)
+    if (items.length === 1) return items[0]?.product?.name || `Producto #${items[0]?.productId}`
+    if (items.length > 1) return `${items[0]?.product?.name || '?'} (+${items.length - 1} más)`
+    return m.product?.name || 'Sin producto'
+  }
+  const getMovProductSku = (m: any) => getMovItems(m)[0]?.product?.sku || m.product?.sku || ''
+  const getMovWarehouseName = (m: any) => {
+    if (m.warehouseFrom?.name) {
+      if (m.type === 'TRANSFERENCIA' && m.warehouseTo?.name) {
+        return `${m.warehouseFrom.name} → ${m.warehouseTo.name}`
+      }
+      return m.warehouseFrom.name
+    }
+    return m.warehouse?.name || ''
+  }
+  const getMovQty = (m: any) => {
+    const items = getMovItems(m)
+    if (items.length > 0) return items.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    return m.quantity || 0
+  }
+  const getMovNote = (m: any) => m.note || m.notes || ''
+  const getMovWhFromId = (m: any) => String(m.warehouseFromId ?? m.warehouseId ?? '')
 
   const getMovementTypeIcon = (type: MovementType) => {
     switch (type) {
@@ -137,13 +145,13 @@ export default function MovementsPage() {
   }
 
   const filteredMovements = movements.filter(movement => {
-    if (filterWarehouse && String(movement.warehouseId) !== filterWarehouse) return false
+    if (filterWarehouse && getMovWhFromId(movement) !== filterWarehouse) return false
     if (!searchTerm) return true
     const search = searchTerm.toLowerCase()
     return (
-      getProductName(movement).toLowerCase().includes(search) ||
-      getProductSku(movement).toLowerCase().includes(search) ||
-      getWarehouseName(movement).toLowerCase().includes(search)
+      getMovProductName(movement).toLowerCase().includes(search) ||
+      getMovProductSku(movement).toLowerCase().includes(search) ||
+      getMovWarehouseName(movement).toLowerCase().includes(search)
     )
   })
 
@@ -262,20 +270,11 @@ export default function MovementsPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-gray-900">{getProductName(movement)}</div>
-                        <div className="text-xs text-gray-500">SKU: {getProductSku(movement)}</div>
+                        <div className="text-sm font-medium text-gray-900">{getMovProductName(movement)}</div>
+                        <div className="text-xs text-gray-500">SKU: {getMovProductSku(movement)}</div>
                       </td>
                       <td className="px-4 py-3">
-                        {movement.type === 'TRANSFERENCIA' && movement.notes ? (
-                          <div className="text-sm">
-                            <div className="text-gray-900 font-medium">{getWarehouseName(movement)}</div>
-                            <div className="text-xs text-gray-500 mt-1">
-                              <span className="text-blue-600">↔ Transferencia</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-sm text-gray-900">{getWarehouseName(movement)}</div>
-                        )}
+                        <div className="text-sm text-gray-900">{getMovWarehouseName(movement)}</div>
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <span className={`text-sm font-semibold ${
@@ -284,15 +283,15 @@ export default function MovementsPage() {
                           'text-blue-600'
                         }`}>
                           {movement.type === 'INGRESO' ? '+' : movement.type === 'EGRESO' ? '-' : '±'}
-                          {movement.quantity}
+                          {getMovQty(movement)}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-900">{getReasonLabel(movement.reason)}</td>
-                      <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{formatDate(movement.createdAt)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-500 whitespace-nowrap">{formatDate((movement as any).movementDate || movement.createdAt)}</td>
                       <td className="px-4 py-3 text-sm text-gray-500">
-                        {movement.notes ? (
-                          <span className="truncate max-w-xs block" title={movement.notes}>
-                            {movement.notes}
+                        {getMovNote(movement) ? (
+                          <span className="truncate max-w-xs block" title={getMovNote(movement)}>
+                            {getMovNote(movement)}
                           </span>
                         ) : (
                           <span className="text-gray-400">-</span>

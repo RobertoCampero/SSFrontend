@@ -68,27 +68,37 @@ export default function ReportsPage() {
     }
   }
 
-  // Lookup maps for enriching movements
-  const productMap = useMemo(() => {
-    const map = new Map<number, Product>()
-    products.forEach(p => map.set(p.id, p))
-    return map
-  }, [products])
-
-  const warehouseMap = useMemo(() => {
-    const map = new Map<number, WarehouseType>()
-    warehouses.forEach(w => map.set(w.id, w))
-    return map
-  }, [warehouses])
-
-  const getProductName = (m: InventoryMovement) => m.product?.name || productMap.get(m.productId)?.name || `Producto #${m.productId}`
-  const getProductSku = (m: InventoryMovement) => m.product?.sku || productMap.get(m.productId)?.sku || ''
-  const getWarehouseName = (m: InventoryMovement) => m.warehouse?.name || warehouseMap.get(m.warehouseId)?.name || `Almacén #${m.warehouseId}`
+  // Helpers to read real API structure: items[], warehouseFrom/warehouseTo
+  const getMovItems = (m: any) => m.items || []
+  const getMovProductName = (m: any) => {
+    const items = getMovItems(m)
+    if (items.length === 1) return items[0]?.product?.name || `Producto #${items[0]?.productId}`
+    if (items.length > 1) return `${items[0]?.product?.name || '?'} (+${items.length - 1} más)`
+    return m.product?.name || 'Sin producto'
+  }
+  const getMovProductSku = (m: any) => getMovItems(m)[0]?.product?.sku || m.product?.sku || ''
+  const getMovWarehouseName = (m: any) => {
+    if (m.warehouseFrom?.name) {
+      if (m.type === 'TRANSFERENCIA' && m.warehouseTo?.name) {
+        return `${m.warehouseFrom.name} → ${m.warehouseTo.name}`
+      }
+      return m.warehouseFrom.name
+    }
+    return m.warehouse?.name || ''
+  }
+  const getMovQty = (m: any) => {
+    const items = getMovItems(m)
+    if (items.length > 0) return items.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    return m.quantity || 0
+  }
+  const getMovNote = (m: any) => m.note || m.notes || ''
+  const getMovWhFromId = (m: any) => String(m.warehouseFromId ?? m.warehouseId ?? m.warehouse?.id ?? '')
+  const getMovCreator = (m: any) => m.creator?.fullName || m.creator?.username || ''
 
   // Filter by date range
   const filteredMovements = useMemo(() => {
-    return movements.filter(m => {
-      const d = m.createdAt?.split('T')[0]
+    return movements.filter((m: any) => {
+      const d = (m.movementDate || m.createdAt)?.split('T')[0]
       if (d && dateRange.from && d < dateRange.from) return false
       if (d && dateRange.to && d > dateRange.to) return false
       return true
@@ -111,9 +121,9 @@ export default function ReportsPage() {
     const transferencias = filteredMovements.filter(m => m.type === 'TRANSFERENCIA')
     const ajustes = filteredMovements.filter(m => m.type === 'AJUSTE')
 
-    const totalIngresoQty = ingresos.reduce((s, m) => s + m.quantity, 0)
-    const totalEgresoQty = egresos.reduce((s, m) => s + m.quantity, 0)
-    const totalTransferQty = transferencias.reduce((s, m) => s + m.quantity, 0)
+    const totalIngresoQty = ingresos.reduce((s, m) => s + getMovQty(m), 0)
+    const totalEgresoQty = egresos.reduce((s, m) => s + getMovQty(m), 0)
+    const totalTransferQty = transferencias.reduce((s, m) => s + getMovQty(m), 0)
 
     const approvedQuotes = filteredQuotes.filter(q => q.status === 'APROBADA')
     const pendingQuotes = filteredQuotes.filter(q => q.status === 'PENDIENTE')
@@ -137,7 +147,7 @@ export default function ReportsPage() {
 
   // ===== BY WAREHOUSE =====
   const warehouseStats = useMemo(() => {
-    const map = new Map<number, {
+    const map = new Map<string, {
       warehouse: WarehouseType
       ingresos: number
       egresos: number
@@ -149,7 +159,7 @@ export default function ReportsPage() {
     }>()
 
     warehouses.forEach(w => {
-      map.set(w.id, {
+      map.set(String(w.id), {
         warehouse: w,
         ingresos: 0, egresos: 0, transferencias: 0, ajustes: 0,
         totalQtyIn: 0, totalQtyOut: 0, movements: [],
@@ -157,12 +167,12 @@ export default function ReportsPage() {
     })
 
     filteredMovements.forEach(m => {
-      const entry = map.get(m.warehouseId)
+      const entry = map.get(getMovWhFromId(m))
       if (!entry) return
       entry.movements.push(m)
       switch (m.type) {
-        case 'INGRESO': entry.ingresos++; entry.totalQtyIn += m.quantity; break
-        case 'EGRESO': entry.egresos++; entry.totalQtyOut += m.quantity; break
+        case 'INGRESO': entry.ingresos++; entry.totalQtyIn += getMovQty(m); break
+        case 'EGRESO': entry.egresos++; entry.totalQtyOut += getMovQty(m); break
         case 'TRANSFERENCIA': entry.transferencias++; break
         case 'AJUSTE': entry.ajustes++; break
       }
@@ -214,7 +224,7 @@ export default function ReportsPage() {
   const tableMovements = useMemo(() => {
     return filteredMovements.filter(m => {
       if (movementFilterType && m.type !== movementFilterType) return false
-      if (movementFilterWarehouse && String(m.warehouseId) !== movementFilterWarehouse) return false
+      if (movementFilterWarehouse && getMovWhFromId(m) !== String(movementFilterWarehouse)) return false
       return true
     })
   }, [filteredMovements, movementFilterType, movementFilterWarehouse])
@@ -569,17 +579,17 @@ export default function ReportsPage() {
                                       </div>
                                     </td>
                                     <td className="px-4 py-2.5">
-                                      <div className="font-medium text-gray-900">{getProductName(m)}</div>
-                                      <div className="text-xs text-gray-400">{getProductSku(m)}</div>
+                                      <div className="font-medium text-gray-900">{getMovProductName(m)}</div>
+                                      <div className="text-xs text-gray-400">{getMovProductSku(m)}</div>
                                     </td>
                                     <td className="px-4 py-2.5 text-center">
                                       <span className={`font-semibold ${m.type === 'INGRESO' ? 'text-green-600' : m.type === 'EGRESO' ? 'text-red-600' : 'text-blue-600'}`}>
-                                        {m.type === 'INGRESO' ? '+' : m.type === 'EGRESO' ? '-' : '±'}{m.quantity}
+                                        {m.type === 'INGRESO' ? '+' : m.type === 'EGRESO' ? '-' : '±'}{getMovQty(m)}
                                       </span>
                                     </td>
                                     <td className="px-4 py-2.5 text-gray-700">{reasonLabel(m.reason)}</td>
-                                    <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{formatDate(m.createdAt)}</td>
-                                    <td className="px-4 py-2.5 text-gray-500 max-w-[200px] truncate">{m.notes || '-'}</td>
+                                    <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{formatDate((m as any).movementDate || m.createdAt)}</td>
+                                    <td className="px-4 py-2.5 text-gray-500 max-w-[200px] truncate">{getMovNote(m) || '-'}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -775,18 +785,18 @@ export default function ReportsPage() {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="font-medium text-gray-900">{getProductName(m)}</div>
-                            <div className="text-xs text-gray-400">{getProductSku(m)}</div>
+                            <div className="font-medium text-gray-900">{getMovProductName(m)}</div>
+                            <div className="text-xs text-gray-400">{getMovProductSku(m)}</div>
                           </td>
-                          <td className="px-4 py-3 text-gray-700">{getWarehouseName(m)}</td>
+                          <td className="px-4 py-3 text-gray-700">{getMovWarehouseName(m)}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`font-semibold ${m.type === 'INGRESO' ? 'text-green-600' : m.type === 'EGRESO' ? 'text-red-600' : 'text-blue-600'}`}>
-                              {m.type === 'INGRESO' ? '+' : m.type === 'EGRESO' ? '-' : '±'}{m.quantity}
+                              {m.type === 'INGRESO' ? '+' : m.type === 'EGRESO' ? '-' : '±'}{getMovQty(m)}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-gray-700">{reasonLabel(m.reason)}</td>
-                          <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDate(m.createdAt)}</td>
-                          <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate">{m.notes || '-'}</td>
+                          <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{formatDate((m as any).movementDate || m.createdAt)}</td>
+                          <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate">{getMovNote(m) || '-'}</td>
                         </tr>
                       ))}
                     </tbody>
