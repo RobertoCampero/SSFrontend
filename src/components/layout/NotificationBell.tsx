@@ -1,82 +1,106 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Bell, Check, CheckCheck, Trash2, Package, FileCheck, FileX, ClipboardCheck, DollarSign, Info, AlertTriangle, CheckCircle, XCircle } from 'lucide-react'
-import { notificationsService } from '@/lib/services'
-import type { Notification, NotificationType } from '@/lib/types'
+import { Bell, CheckCheck, Package, AlertTriangle, Eye, ExternalLink } from 'lucide-react'
+import { inventoryService } from '@/lib/services'
 import { useRouter } from 'next/navigation'
 
-const typeConfig: Record<NotificationType, { icon: React.ReactNode; color: string; bg: string }> = {
-  INFO:              { icon: <Info size={16} />,             color: 'text-blue-600',   bg: 'bg-blue-100' },
-  WARNING:           { icon: <AlertTriangle size={16} />,    color: 'text-yellow-600', bg: 'bg-yellow-100' },
-  SUCCESS:           { icon: <CheckCircle size={16} />,      color: 'text-green-600',  bg: 'bg-green-100' },
-  ERROR:             { icon: <XCircle size={16} />,          color: 'text-red-600',    bg: 'bg-red-100' },
-  STOCK_LOW:         { icon: <Package size={16} />,          color: 'text-orange-600', bg: 'bg-orange-100' },
-  QUOTE_APPROVED:    { icon: <FileCheck size={16} />,        color: 'text-green-600',  bg: 'bg-green-100' },
-  QUOTE_REJECTED:    { icon: <FileX size={16} />,            color: 'text-red-600',    bg: 'bg-red-100' },
-  ORDER_COMPLETED:   { icon: <ClipboardCheck size={16} />,   color: 'text-green-600',  bg: 'bg-green-100' },
-  PAYMENT_RECEIVED:  { icon: <DollarSign size={16} />,       color: 'text-green-600',  bg: 'bg-green-100' },
+interface StockAlert {
+  id: string
+  productName: string
+  sku: string
+  currentStock: number
+  minStock: number
+  read: boolean
 }
 
-function timeAgo(dateStr: string): string {
-  const now = new Date()
-  const date = new Date(dateStr)
-  const diffMs = now.getTime() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'ahora'
-  if (diffMin < 60) return `hace ${diffMin}m`
-  const diffHrs = Math.floor(diffMin / 60)
-  if (diffHrs < 24) return `hace ${diffHrs}h`
-  const diffDays = Math.floor(diffHrs / 24)
-  if (diffDays < 7) return `hace ${diffDays}d`
-  return date.toLocaleDateString('es-BO')
+const DISMISSED_KEY = 'ss_dismissed_stock_alerts'
+
+function getDismissed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(DISMISSED_KEY)
+    return raw ? new Set(JSON.parse(raw)) : new Set()
+  } catch { return new Set() }
+}
+
+function saveDismissed(set: Set<string>) {
+  localStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(set)))
 }
 
 export function NotificationBell() {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [alerts, setAlerts] = useState<StockAlert[]>([])
   const [loading, setLoading] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const res = await notificationsService.getUnreadCount()
-      console.log('📬 Unread count response:', res)
-      const data = res as any
-      setUnreadCount(data.count ?? data.unreadCount ?? (typeof data === 'number' ? data : 0))
-    } catch (err) {
-      console.error('❌ Error fetching unread count:', err)
-    }
-  }, [])
-
-  const fetchNotifications = useCallback(async () => {
+  const fetchStockAlerts = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await notificationsService.list({ page: 1, limit: 20 })
-      console.log('📬 Notifications raw response:', JSON.stringify(res))
-      const data = res as any
-      const list = data.notifications || data.data || (Array.isArray(data) ? data : [])
-      setNotifications(list)
-    } catch (err) {
-      console.error('❌ Error fetching notifications:', err)
+      const dismissed = getDismissed()
+      let lowStockItems: StockAlert[] = []
+
+      // Try /inventory/low-stock first
+      try {
+        const lowStock = await inventoryService.getLowStock()
+        const items = Array.isArray(lowStock) ? lowStock : (lowStock as any)?.products || (lowStock as any)?.items || []
+        lowStockItems = items.map((item: any) => ({
+          id: `low-${item.productId || item.id}`,
+          productName: item.productName || item.name || 'Producto',
+          sku: item.sku || '',
+          currentStock: item.currentStock ?? item.totalStock ?? 0,
+          minStock: item.minStock ?? item.minStockGlobal ?? 0,
+          read: dismissed.has(`low-${item.productId || item.id}`),
+        }))
+      } catch {
+        // Fallback: use /inventory and filter low stock
+        try {
+          const res = await inventoryService.getInventory({ page: 1, limit: 500 })
+          const inventory = res.inventory || (res as any).data || []
+          lowStockItems = inventory
+            .filter((item: any) => {
+              const total = item.totalStock ?? 0
+              const min = item.minStockGlobal ?? item.minStock ?? 0
+              return min > 0 && total <= min
+            })
+            .map((item: any) => ({
+              id: `low-${item.id}`,
+              productName: item.name || 'Producto',
+              sku: item.sku || '',
+              currentStock: item.totalStock ?? 0,
+              minStock: item.minStockGlobal ?? item.minStock ?? 0,
+              read: dismissed.has(`low-${item.id}`),
+            }))
+        } catch { /* both failed */ }
+      }
+
+      // Sort: unread first, then by how critical (lowest stock ratio first)
+      lowStockItems.sort((a, b) => {
+        if (a.read !== b.read) return a.read ? 1 : -1
+        const ratioA = a.minStock > 0 ? a.currentStock / a.minStock : 1
+        const ratioB = b.minStock > 0 ? b.currentStock / b.minStock : 1
+        return ratioA - ratioB
+      })
+
+      setAlerts(lowStockItems)
+    } catch {
+      setAlerts([])
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Poll unread count every 30s
+  // Fetch on mount and every 60s
   useEffect(() => {
-    fetchUnreadCount()
-    const interval = setInterval(fetchUnreadCount, 30000)
+    fetchStockAlerts()
+    const interval = setInterval(fetchStockAlerts, 60000)
     return () => clearInterval(interval)
-  }, [fetchUnreadCount])
+  }, [fetchStockAlerts])
 
-  // Load notifications when dropdown opens
+  // Refresh when dropdown opens
   useEffect(() => {
-    if (open) fetchNotifications()
-  }, [open, fetchNotifications])
+    if (open) fetchStockAlerts()
+  }, [open, fetchStockAlerts])
 
   // Close on outside click
   useEffect(() => {
@@ -89,38 +113,38 @@ export function NotificationBell() {
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
-  const handleMarkAsRead = async (id: string) => {
-    try {
-      await notificationsService.markAsRead(id)
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
-      setUnreadCount(prev => Math.max(0, prev - 1))
-    } catch { /* ignore */ }
-  }
+  const unreadCount = alerts.filter(a => !a.read).length
 
-  const handleMarkAllAsRead = async () => {
-    try {
-      await notificationsService.markAllAsRead()
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-      setUnreadCount(0)
-    } catch { /* ignore */ }
-  }
-
-  const handleDelete = async (id: string, e: React.MouseEvent) => {
+  const handleDismiss = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    try {
-      await notificationsService.delete(id)
-      const deleted = notifications.find(n => n.id === id)
-      setNotifications(prev => prev.filter(n => n.id !== id))
-      if (deleted && !deleted.read) setUnreadCount(prev => Math.max(0, prev - 1))
-    } catch { /* ignore */ }
+    const dismissed = getDismissed()
+    dismissed.add(id)
+    saveDismissed(dismissed)
+    setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a))
   }
 
-  const handleNotificationClick = async (notif: Notification) => {
-    if (!notif.read) await handleMarkAsRead(notif.id)
-    if (notif.link) {
-      setOpen(false)
-      router.push(notif.link)
+  const handleDismissAll = () => {
+    const dismissed = getDismissed()
+    alerts.forEach(a => dismissed.add(a.id))
+    saveDismissed(dismissed)
+    setAlerts(prev => prev.map(a => ({ ...a, read: true })))
+  }
+
+  const handleAlertClick = (alert: StockAlert) => {
+    if (!alert.read) {
+      const dismissed = getDismissed()
+      dismissed.add(alert.id)
+      saveDismissed(dismissed)
+      setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, read: true } : a))
     }
+    setOpen(false)
+    router.push('/stock')
+  }
+
+  const getStockSeverity = (current: number, min: number) => {
+    if (current === 0) return { label: 'Sin stock', color: 'text-red-700', bg: 'bg-red-100', border: 'border-red-200' }
+    if (current <= min * 0.5) return { label: 'Crítico', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' }
+    return { label: 'Bajo', color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' }
   }
 
   return (
@@ -134,7 +158,7 @@ export function NotificationBell() {
       >
         <Bell size={19} />
         {unreadCount > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+          <span className="absolute -right-0.5 -top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white animate-pulse">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
@@ -142,72 +166,102 @@ export function NotificationBell() {
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-96 rounded-xl border border-gray-200 bg-white shadow-2xl z-[200] overflow-hidden">
+        <div className="absolute right-0 top-full mt-2 w-[420px] rounded-xl border border-gray-200 bg-white shadow-2xl z-[200] overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
-            <h3 className="font-semibold text-sm text-gray-900">Notificaciones</h3>
-            {unreadCount > 0 && (
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-sm text-gray-900">Alertas de Stock</h3>
+              {alerts.length > 0 && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  {alerts.length} producto{alerts.length !== 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {unreadCount > 0 && (
+                <button
+                  onClick={handleDismissAll}
+                  className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
+                  title="Marcar todas como leídas"
+                >
+                  <CheckCheck size={14} />
+                  Descartar
+                </button>
+              )}
               <button
-                onClick={handleMarkAllAsRead}
-                className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-medium"
-                title="Marcar todas como leídas"
+                onClick={() => { setOpen(false); router.push('/stock') }}
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 font-medium"
+                title="Ver inventario"
               >
-                <CheckCheck size={14} />
-                Marcar todas
+                <ExternalLink size={12} />
+                Ver stock
               </button>
-            )}
+            </div>
           </div>
 
           {/* List */}
-          <div className="max-h-96 overflow-y-auto">
+          <div className="max-h-[420px] overflow-y-auto">
             {loading ? (
               <div className="flex items-center justify-center py-10">
-                <div className="animate-spin w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full" />
+                <div className="animate-spin w-5 h-5 border-2 border-orange-500 border-t-transparent rounded-full" />
               </div>
-            ) : notifications.length === 0 ? (
+            ) : alerts.length === 0 ? (
               <div className="text-center py-10 text-gray-400">
-                <Bell size={32} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Sin notificaciones</p>
+                <Package size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm font-medium">Todo en orden</p>
+                <p className="text-xs mt-1">No hay productos con stock bajo</p>
               </div>
             ) : (
               <div className="divide-y">
-                {notifications.map(notif => {
-                  const config = typeConfig[notif.type] || typeConfig.INFO
+                {alerts.map(alert => {
+                  const severity = getStockSeverity(alert.currentStock, alert.minStock)
                   return (
                     <div
-                      key={notif.id}
-                      onClick={() => handleNotificationClick(notif)}
+                      key={alert.id}
+                      onClick={() => handleAlertClick(alert)}
                       className={`flex items-start gap-3 px-4 py-3 cursor-pointer transition-colors ${
-                        notif.read ? 'bg-white hover:bg-gray-50' : 'bg-blue-50/50 hover:bg-blue-50'
+                        alert.read ? 'bg-white hover:bg-gray-50' : 'bg-orange-50/40 hover:bg-orange-50/70'
                       }`}
                     >
                       {/* Icon */}
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${config.bg} ${config.color}`}>
-                        {config.icon}
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                        alert.currentStock === 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-600'
+                      }`}>
+                        {alert.currentStock === 0 ? <AlertTriangle size={17} /> : <Package size={17} />}
                       </div>
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
-                          <p className={`text-sm leading-tight ${notif.read ? 'text-gray-700' : 'text-gray-900 font-semibold'}`}>
-                            {notif.title}
+                          <p className={`text-sm leading-tight ${alert.read ? 'text-gray-700' : 'text-gray-900 font-semibold'}`}>
+                            {alert.productName}
                           </p>
-                          {!notif.read && (
-                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0 mt-1.5" />
+                          {!alert.read && (
+                            <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1.5" />
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{notif.message}</p>
-                        <p className="text-[10px] text-gray-400 mt-1">{timeAgo(notif.createdAt)}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">SKU: {alert.sku}</p>
+                        <div className="flex items-center gap-3 mt-1.5">
+                          <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${severity.bg} ${severity.color} ${severity.border} border`}>
+                            {severity.label}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            Stock: <strong className={alert.currentStock === 0 ? 'text-red-600' : 'text-orange-600'}>{alert.currentStock}</strong>
+                            {' / mín. '}{alert.minStock}
+                          </span>
+                        </div>
                       </div>
 
-                      {/* Delete */}
-                      <button
-                        onClick={(e) => handleDelete(notif.id, e)}
-                        className="text-gray-300 hover:text-red-500 transition-colors shrink-0 mt-1"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      {/* Dismiss */}
+                      {!alert.read && (
+                        <button
+                          onClick={(e) => handleDismiss(alert.id, e)}
+                          className="text-gray-300 hover:text-blue-500 transition-colors shrink-0 mt-1"
+                          title="Marcar como leída"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      )}
                     </div>
                   )
                 })}

@@ -103,8 +103,8 @@ export default function ProductsPage() {
     { key: 'sku', label: 'SKU', sortable: true },
     { key: 'name', label: 'Nombre', sortable: true },
     { key: 'unit', label: 'Unidad', render: (item) => <span>{item.unit?.name || '-'}</span> },
-    { key: 'costPrice', label: 'Costo', render: (item) => <span>${(item.costPrice || 0).toLocaleString()}</span> },
-    { key: 'salePrice', label: 'Venta', render: (item) => <span className="font-semibold">${(item.salePrice || 0).toLocaleString()}</span> },
+    { key: 'costPrice', label: 'Costo', render: (item) => <span>Bs {(item.costPrice || 0).toLocaleString()}</span> },
+    { key: 'salePrice', label: 'Venta', render: (item) => <span className="font-semibold">Bs {(item.salePrice || 0).toLocaleString()}</span> },
     { key: 'minStock', label: 'Stock Mín.', sortable: true },
   ]
 

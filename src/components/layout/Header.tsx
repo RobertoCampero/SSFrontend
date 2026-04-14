@@ -35,8 +35,6 @@ export function Header() {
   const { user } = useAuth()
   const segments = pathname.split('/').filter(Boolean)
   
-  console.log('User en Header:', user); // Para depuración
-
   const handleLogout = () => {
     authService.logout()
     router.push('/login')
