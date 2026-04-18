@@ -158,7 +158,7 @@ export function Sidebar() {
           <div className="flex items-center">
             <div className="flex h-52 w-52 items-center justify-center overflow-hidden">
               <Image 
-                src="/logo2.png" 
+                src="/logo.svg" 
                 alt="Smart Services Logo" 
                 width={400}
                 height={400}
@@ -178,7 +178,7 @@ export function Sidebar() {
         >
           {collapsed ? (
             <Image 
-              src="/logo3.png" 
+              src="/icon.svg" 
               alt="Expandir menú" 
               width={20}
               height={20}

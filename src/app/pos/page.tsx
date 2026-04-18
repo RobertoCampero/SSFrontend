@@ -40,6 +40,7 @@ function POSContent() {
   const [paymentType, setPaymentType] = useState<'CONTADO' | 'CREDITO'>('CONTADO')
   const [creditDescription, setCreditDescription] = useState('')
   const [creditDays, setCreditDays] = useState(30)
+  const [validDays, setValidDays] = useState(30)
   const [createdQuote, setCreatedQuote] = useState<any>(null)
   const [showReceipt, setShowReceipt] = useState(false)
   const [activeTab, setActiveTab] = useState<'carrito' | 'cliente' | 'cobrar' | 'historial'>('carrito')
@@ -328,8 +329,10 @@ function POSContent() {
   const updateDiscount = (productId: string, discount: number) => {
     setCart(cart.map(item => {
       if (String(item.product.id) === productId) {
-        const subtotal = (item.price * item.quantity) * (1 - discount / 100)
-        return { ...item, discount, subtotal }
+        // Calcular el precio con descuento basado en el precio original
+        const price = item.originalPrice * (1 - discount / 100)
+        const subtotal = price * item.quantity
+        return { ...item, discount, price, subtotal }
       }
       return item
     }))
@@ -400,13 +403,15 @@ function POSContent() {
         itemType: 'PRODUCT' as const,
         description: item.product.name,
         quantity: item.quantity,
-        unitPrice: item.price,
+        unitPrice: item.originalPrice, // Enviar precio original, no el precio con descuento
         discount: item.discount
       }))
 
-      // Fecha de validez: 30 días desde hoy
-      const validUntil = new Date()
-      validUntil.setDate(validUntil.getDate() + 30)
+      // Fecha de validez según días seleccionados (desde hoy a las 00:00)
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const validUntil = new Date(today)
+      validUntil.setDate(validUntil.getDate() + (validDays || 30))
 
       const quote = await quotesService.create({
         clientId: Number(selectedClient.id),
@@ -517,20 +522,19 @@ function POSContent() {
             {!searchProduct && recentProducts.length > 0 && (
               <div className="mb-6">
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Recientes</p>
-                <div className="flex flex-wrap gap-3">
+                <div className="space-y-2">
                   {recentProducts.map(product => (
                     <button
                       key={product.id}
                       onClick={() => addToCart(product)}
-                      className="flex items-center gap-3 px-3 py-2 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all"
+                      className="w-full flex items-center justify-between px-4 py-3 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
                     >
-                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-xs shrink-0">
-                        {product.name.charAt(0).toUpperCase()}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900">
+                          <span className="text-gray-500 font-normal">{product.sku}</span> - {product.name}
+                        </div>
                       </div>
-                      <div className="text-left">
-                        <div className="font-medium text-sm text-gray-900 truncate max-w-[120px]">{product.name}</div>
-                        <div className="text-xs font-semibold text-blue-600">Bs. {product.salePrice?.toFixed(2)}</div>
-                      </div>
+                      <div className="text-sm font-semibold text-blue-600 ml-3">Bs. {product.salePrice?.toFixed(2)}</div>
                     </button>
                   ))}
                 </div>
@@ -543,20 +547,19 @@ function POSContent() {
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
                   {filteredProducts.length} productos encontrados
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                <div className="space-y-2">
                   {filteredProducts.map(product => (
                     <button
                       key={product.id}
                       onClick={() => addToCart(product)}
-                      className="flex items-center gap-3 p-3 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
+                      className="w-full flex items-center justify-between px-4 py-3 border rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-left"
                     >
-                      <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-blue-600 font-bold text-sm shrink-0">
-                        {product.name.charAt(0).toUpperCase()}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm text-gray-900">
+                          <span className="text-gray-500 font-normal">{product.sku}</span> - {product.name}
+                        </div>
                       </div>
-                      <div className="min-w-0">
-                        <div className="font-medium text-sm text-gray-900 truncate">{product.name}</div>
-                        <div className="text-xs font-semibold text-blue-600">Bs. {product.salePrice?.toFixed(2)}</div>
-                      </div>
+                      <div className="text-sm font-semibold text-blue-600 ml-3">Bs. {product.salePrice?.toFixed(2)}</div>
                     </button>
                   ))}
                 </div>
@@ -571,7 +574,7 @@ function POSContent() {
         </div>
 
         {/* ===== RIGHT PANEL - Cliente + Carrito + Cobrar (all visible) ===== */}
-        <div className="w-[400px] flex flex-col bg-white">
+        <div className="w-[500px] flex flex-col bg-white">
           <div className="flex-1 overflow-y-auto">
 
             {/* ======== SECCIÓN: CLIENTE ======== */}
@@ -668,72 +671,87 @@ function POSContent() {
                   <p className="text-xs mt-1">Busca y agrega productos</p>
                 </div>
               ) : (
-                <div className="divide-y">
+                <div className="divide-y divide-gray-200">
                   {cart.map(item => (
-                    <div key={item.product.id} className="flex items-center gap-3 px-4 py-3">
-                      {/* Product avatar */}
-                      <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold text-sm shrink-0">
-                        {item.product.name.charAt(0).toUpperCase()}
-                      </div>
-
-                      {/* Product info + editable price */}
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm text-gray-900 truncate">{item.product.name}</div>
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className="text-xs text-gray-400">Bs.</span>
-                          <input
-                            type="number"
-                            value={item.price}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                              const val = parseFloat(e.target.value)
-                              if (!isNaN(val) && val >= 0) updatePrice(String(item.product.id), val)
-                            }}
-                            className="w-20 text-xs border rounded px-1.5 py-0.5 focus:ring-1 focus:ring-blue-500 outline-none"
-                            step="0.01"
-                            min="0"
-                            title="Editar precio (descuento)"
-                          />
-                          {item.discount > 0 && (
-                            <span className="text-[10px] text-green-600 font-medium">-{item.discount.toFixed(1)}%</span>
-                          )}
+                    <div key={item.product.id} className="px-4 py-4">
+                      {/* Header: Avatar + Nombre + Eliminar */}
+                      <div className="flex items-start gap-3 mb-3">
+                        <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center text-orange-600 font-bold shrink-0">
+                          {item.product.name.charAt(0).toUpperCase()}
                         </div>
-                        {item.stockWarning && (
-                          <p className="text-[10px] text-red-500 mt-0.5">Stock: {item.availableStock}</p>
-                        )}
-                      </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-base text-gray-900">{item.product.name}</div>
+                          <div className="text-sm text-gray-500 mt-0.5">
+                            Precio: <span className="font-semibold text-gray-700">Bs. {item.originalPrice.toFixed(2)}</span>
+                          </div>
+                        </div>
 
-                      {/* Quantity controls */}
-                      <div className="flex items-center gap-1">
+                        {/* Delete */}
                         <button
-                          onClick={() => updateQuantity(String(item.product.id), item.quantity - 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
-                          title="Disminuir cantidad"
+                          onClick={() => removeFromCart(String(item.product.id))}
+                          className="text-gray-300 hover:text-red-500 transition-colors"
+                          title="Eliminar"
                         >
-                          <ChevronLeft size={14} />
-                        </button>
-                        <span className="w-8 text-center text-sm font-semibold">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(String(item.product.id), item.quantity + 1)}
-                          className="w-7 h-7 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100 text-sm"
-                          title="Aumentar cantidad"
-                        >
-                          <ChevronRight size={14} />
+                          <X size={16} />
                         </button>
                       </div>
 
-                      {/* Subtotal */}
-                      <div className="text-right w-20 shrink-0">
-                        <div className="font-bold text-sm text-gray-900">Bs. {item.subtotal.toFixed(2)}</div>
+                      {/* Controles: Descuento + Cantidad + Subtotal */}
+                      <div className="flex items-center justify-between gap-4">
+                        {/* Campo de descuento */}
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs text-gray-500 whitespace-nowrap">Descuento:</label>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={item.discount}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                                const val = parseFloat(e.target.value)
+                                if (!isNaN(val) && val >= 0 && val <= 100) {
+                                  updateDiscount(String(item.product.id), val)
+                                }
+                              }}
+                              className="w-16 text-sm border rounded px-2 py-1 focus:ring-1 focus:ring-blue-500 outline-none"
+                              step="0.1"
+                              min="0"
+                              max="100"
+                              placeholder="0"
+                            />
+                            <span className="text-sm text-gray-500">%</span>
+                          </div>
+                        </div>
+
+                        {/* Controles de cantidad */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => updateQuantity(String(item.product.id), item.quantity - 1)}
+                            className="w-8 h-8 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100"
+                            title="Disminuir cantidad"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <span className="w-10 text-center font-semibold">{item.quantity}</span>
+                          <button
+                            onClick={() => updateQuantity(String(item.product.id), item.quantity + 1)}
+                            className="w-8 h-8 flex items-center justify-center rounded border text-gray-500 hover:bg-gray-100"
+                            title="Aumentar cantidad"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+
+                        {/* Subtotal */}
+                        <div className="text-right">
+                          <div className="text-xs text-gray-500">Subtotal</div>
+                          <div className="font-bold text-base text-gray-900">Bs. {item.subtotal.toFixed(2)}</div>
+                        </div>
                       </div>
 
-                      {/* Delete */}
-                      <button
-                        onClick={() => removeFromCart(String(item.product.id))}
-                        className="text-gray-300 hover:text-red-500 transition-colors"
-                        title="Eliminar"
-                      >
-                        <X size={16} />
-                      </button>
+                      {item.stockWarning && (
+                        <div className="mt-2 text-xs text-red-500 bg-red-50 px-2 py-1 rounded">
+                          ⚠️ Stock disponible: {item.availableStock}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -775,6 +793,19 @@ function POSContent() {
                     <option value="CONTADO">Contado</option>
                     <option value="CREDITO">Crédito</option>
                   </select>
+                </div>
+
+                <div>
+                  <label htmlFor="pos-valid-days" className="text-xs font-medium text-gray-500 mb-1 block">Validez (días)</label>
+                  <input
+                    id="pos-valid-days"
+                    type="number"
+                    min="1"
+                    value={validDays}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setValidDays(Number(e.target.value))}
+                    className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="30"
+                  />
                 </div>
 
                 {paymentType !== 'CONTADO' && (
@@ -967,11 +998,11 @@ function POSContent() {
             <select
               id="pos-client-doctype"
               value={newClientForm.documentType}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewClientForm({ ...newClientForm, documentType: e.target.value })}
+              onChange={(e) => setNewClientForm({ ...newClientForm, documentType: e.target.value })}
               className="input"
             >
               <option value="CI">CEDULA DE IDENTIDAD</option>
-              <option value="PASSPORT">Pasaporte</option>
+              <option value="NIT">NIT</option>
             </select>
           </div>
 
@@ -1072,7 +1103,7 @@ function POSContent() {
       {/* HEADER */}
       <div className="flex justify-between items-start">
         <div>
-          <img src="/logo1.png" alt="Smart Services SRL" className="w-40 mb-3" />
+          <img src="/logo.svg" alt="Smart Services SRL" className="w-40 mb-3" />
           <table className="text-xs">
             <tbody>
               <tr>
@@ -1221,7 +1252,17 @@ function POSContent() {
       {/* BOTONES */}
       <div className="flex justify-end gap-3 mt-6 pt-4 border-t print:hidden">
         <button
-          onClick={() => generateQuotePDF({ quote: createdQuote })}
+          onClick={async () => {
+            try {
+              // Recargar la cotización completa desde el backend para tener todos los datos
+              const fullQuote = await quotesService.getById(String(createdQuote.id))
+              generateQuotePDF({ quote: fullQuote })
+            } catch (err) {
+              console.error('Error al recargar cotización:', err)
+              // Si falla, usar los datos que tenemos
+              generateQuotePDF({ quote: createdQuote })
+            }
+          }}
           className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium"
         >
           <FileDown size={16} />

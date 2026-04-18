@@ -32,7 +32,7 @@ export default function ProductsPage() {
   const [productCategoryCorrections, setProductCategoryCorrections] = useState<Record<number, number>>({})
   const [previewPage, setPreviewPage] = useState(1)
   const [searchTerm, setSearchTerm] = useState('')
-  const [form, setForm] = useState({ name: '', sku: '', description: '', categoryId: 1, unitId: '', costPrice: 0, salePrice: 0, minStock: 0 })
+  const [form, setForm] = useState({ name: '', sku: '', description: '', categoryId: 0, unitId: '', costPrice: 0, salePrice: 0, minStock: 0, brand: '', origin: '', manufacturerCode: '', supplierId: 0, initialStock: 0, initialWarehouseId: '' })
 
   useEffect(() => {
     loadProducts()
@@ -111,7 +111,8 @@ export default function ProductsPage() {
   const openAdd = () => { 
     setEditing(null); 
     const defaultUnitId = units.length > 0 ? units[0].id : '';
-    setForm({ name: '', sku: '', description: '', categoryId: 1, unitId: defaultUnitId, costPrice: 0, salePrice: 0, minStock: 0 }); 
+    const defaultWarehouseId = warehouses.length > 0 ? String(warehouses[0].id) : '';
+    setForm({ name: '', sku: '', description: '', categoryId: 0, unitId: defaultUnitId, costPrice: 0, salePrice: 0, minStock: 0, brand: '', origin: '', manufacturerCode: '', supplierId: 0, initialStock: 0, initialWarehouseId: defaultWarehouseId }); 
     setModalOpen(true) 
   }
   
@@ -125,7 +126,13 @@ export default function ProductsPage() {
       unitId: item.unitId, 
       costPrice: item.costPrice, 
       salePrice: item.salePrice, 
-      minStock: item.minStock 
+      minStock: item.minStock,
+      brand: (item as any).brand || '',
+      origin: (item as any).origin || '',
+      manufacturerCode: (item as any).manufacturerCode || '',
+      supplierId: (item as any).supplierId || 0,
+      initialStock: 0,
+      initialWarehouseId: ''
     }); 
     setModalOpen(true) 
   }
@@ -136,13 +143,31 @@ export default function ProductsPage() {
     try {
       if (editing) {
         await productsService.update(String(editing.id), form)
+        toast.success('Producto actualizado exitosamente')
       } else {
-        await productsService.create(form)
+        // Crear el producto
+        const newProduct = await productsService.create(form)
+        
+        // Si hay stock inicial, crear movimiento de inventario
+        if (form.initialStock > 0 && form.initialWarehouseId) {
+          await inventoryService.createMovement({
+            productId: Number(newProduct.id),
+            warehouseId: Number(form.initialWarehouseId),
+            type: 'INGRESO',
+            reason: 'COMPRA',
+            quantity: form.initialStock,
+            notes: 'Stock inicial del producto'
+          })
+          toast.success(`Producto creado con ${form.initialStock} unidades en stock`)
+        } else {
+          toast.success('Producto creado exitosamente')
+        }
       }
       await loadProducts()
       setModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al guardar producto')
+      toast.error(err instanceof Error ? err.message : 'Error al guardar producto')
     }
   }
 
@@ -429,6 +454,23 @@ export default function ProductsPage() {
             </select>
           </div>
           <div>
+            <label htmlFor="prod_category" className="label">Categoría *</label>
+            <select
+              id="prod_category"
+              className="input"
+              value={form.categoryId}
+              onChange={(e: ChangeEvent<HTMLSelectElement>) => setForm({ ...form, categoryId: Number(e.target.value) })}
+              required
+            >
+              <option value="0">Seleccione una categoría</option>
+              {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label htmlFor="prod_minstock" className="label">Stock Mínimo</label>
             <input 
               id="prod_minstock" 
@@ -463,6 +505,77 @@ export default function ProductsPage() {
               onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, salePrice: Number(e.target.value) })} 
             />
           </div>
+          <div>
+            <label htmlFor="prod_brand" className="label">Marca</label>
+            <input 
+              id="prod_brand" 
+              className="input" 
+              value={form.brand} 
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, brand: e.target.value })} 
+            />
+          </div>
+          <div>
+            <label htmlFor="prod_origin" className="label">Origen</label>
+            <input 
+              id="prod_origin" 
+              className="input" 
+              value={form.origin} 
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, origin: e.target.value })} 
+            />
+          </div>
+          <div>
+            <label htmlFor="prod_mfg_code" className="label">Código Fabricante</label>
+            <input 
+              id="prod_mfg_code" 
+              className="input" 
+              value={form.manufacturerCode} 
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, manufacturerCode: e.target.value })} 
+            />
+          </div>
+          <div>
+            <label htmlFor="prod_supplier" className="label">Proveedor</label>
+            <input 
+              id="prod_supplier" 
+              className="input" 
+              value={form.supplierId || ''} 
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, supplierId: Number(e.target.value) || 0 })} 
+              placeholder="ID del proveedor" 
+              type="number"
+            />
+          </div>
+          {!editing && (
+            <>
+              <div>
+                <label htmlFor="prod_warehouse" className="label">Almacén Inicial</label>
+                <select
+                  id="prod_warehouse"
+                  className="input"
+                  value={form.initialWarehouseId}
+                  onChange={(e: ChangeEvent<HTMLSelectElement>) => setForm({ ...form, initialWarehouseId: e.target.value })}
+                >
+                  <option value="">Sin stock inicial</option>
+                  {warehouses.map(wh => (
+                    <option key={wh.id} value={wh.id}>
+                      {wh.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="prod_initial_stock" className="label">Stock Inicial</label>
+                <input 
+                  id="prod_initial_stock" 
+                  className="input"
+                  min="0" 
+                  type="number" 
+                  value={form.initialStock} 
+                  onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, initialStock: Number(e.target.value) })} 
+                  placeholder="0"
+                  disabled={!form.initialWarehouseId}
+                />
+              </div>
+            </>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="prod_desc" className="label">Descripción</label>
             <textarea 

@@ -7,8 +7,88 @@ interface PDFOptions {
   quote: Quote;
 }
 
+function numberToWords(amount: number): string {
+  const unidades = ['', 'Un', 'Dos', 'Tres', 'Cuatro', 'Cinco', 'Seis', 'Siete', 'Ocho', 'Nueve']
+  const especiales = ['Diez', 'Once', 'Doce', 'Trece', 'Catorce', 'Quince', 'Dieciseis', 'Diecisiete', 'Dieciocho', 'Diecinueve']
+  const decenas = ['', 'Diez', 'Veinte', 'Treinta', 'Cuarenta', 'Cincuenta', 'Sesenta', 'Setenta', 'Ochenta', 'Noventa']
+  const centenas = ['', 'Ciento', 'Doscientos', 'Trescientos', 'Cuatrocientos', 'Quinientos', 'Seiscientos', 'Setecientos', 'Ochocientos', 'Novecientos']
+
+  function convertGroup(n: number): string {
+    if (n === 0) return ''
+    if (n === 100) return 'Cien'
+    
+    let result = ''
+    
+    if (n >= 100) {
+      result += centenas[Math.floor(n / 100)] + ' '
+      n = n % 100
+    }
+    
+    if (n >= 20) {
+      const dec = Math.floor(n / 10)
+      const uni = n % 10
+      if (dec === 2 && uni > 0) {
+        result += 'Veinti' + unidades[uni].toLowerCase()
+      } else {
+        result += decenas[dec]
+        if (uni > 0) result += ' y ' + unidades[uni]
+      }
+    } else if (n >= 10) {
+      result += especiales[n - 10]
+    } else if (n > 0) {
+      result += unidades[n]
+    }
+    
+    return result.trim()
+  }
+
+  const entero = Math.floor(Math.abs(amount))
+  const centavos = Math.round((Math.abs(amount) - entero) * 100)
+
+  let palabras = ''
+
+  if (entero === 0) {
+    palabras = 'Cero'
+  } else if (entero === 1) {
+    palabras = 'Un'
+  } else {
+    const millones = Math.floor(entero / 1000000)
+    const miles = Math.floor((entero % 1000000) / 1000)
+    const resto = entero % 1000
+
+    if (millones > 0) {
+      if (millones === 1) {
+        palabras += 'Un Millon '
+      } else {
+        palabras += convertGroup(millones) + ' Millones '
+      }
+    }
+
+    if (miles > 0) {
+      if (miles === 1) {
+        palabras += 'Mil '
+      } else {
+        palabras += convertGroup(miles) + ' Mil '
+      }
+    }
+
+    if (resto > 0) {
+      palabras += convertGroup(resto)
+    }
+  }
+
+  palabras = palabras.trim()
+
+  if (centavos > 0) {
+    const centavosText = convertGroup(centavos)
+    return `${palabras} Bolivianos con ${centavosText} Centavos`
+  } else {
+    return `${palabras} Bolivianos`
+  }
+}
+
 export function generateQuotePDF({ quote }: PDFOptions): void {
-  // Versión actualizada con tabla sin Unidad y filas separadas para Incluye
+  
   const doc = new jsPDF();
 
   const primaryBlue: [number, number, number] = [30, 64, 175];
@@ -18,25 +98,21 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   const pageHeight = doc.internal.pageSize.getHeight();
   const contentWidth = pageWidth - marginLeft - marginRight;
 
-  // ========== LÍNEA AZUL SUPERIOR ==========
+  
   doc.setDrawColor(...primaryBlue);
   doc.setLineWidth(3);
   doc.line(marginLeft, 10, pageWidth - marginRight, 10);
 
-  // ========== HEADER ==========
-  // Logo a la izquierda
   const imgProps = doc.getImageProperties(logo1.src);
   const imgWidth = 45;
   const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
   doc.addImage(logo1.src, 'PNG', marginLeft, 15, imgWidth, imgHeight);
 
-  // Título "COTIZACIÓN" a la derecha
   doc.setFontSize(22);
   doc.setTextColor(...primaryBlue);
   doc.setFont('helvetica', 'bold');
   doc.text('COTIZACIÓN', pageWidth - marginRight, 25, { align: 'right' });
 
-  // ========== INFORMACIÓN DE LA EMPRESA Y FECHAS ==========
   doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
@@ -44,7 +120,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   let currentY = 40;
   const infoBoxStartY = currentY - 5;
 
-  // Columna izquierda - Datos de la empresa
   doc.setFontSize(9);
   doc.setTextColor(...primaryBlue);
   doc.setFont('helvetica', 'bold');
@@ -53,7 +128,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text('333314024', marginLeft + 27, currentY);
   
-  // Línea debajo de NIT
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(marginLeft + 27, currentY + 1, marginLeft + 90, currentY + 1);
@@ -66,7 +140,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text('srlsmartservices@gmail.com', marginLeft + 27, currentY);
   
-  // Línea debajo de Correo
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(marginLeft + 27, currentY + 1, marginLeft + 90, currentY + 1);
@@ -79,14 +152,12 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text('77299562 / 75812336', marginLeft + 27, currentY);
   
-  // Línea debajo de Teléfono
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(marginLeft + 27, currentY + 1, marginLeft + 90, currentY + 1);
 
   currentY += 3;
 
-  // Columna derecha - N° de cotización y Fechas
   const quoteNumber = String(quote.quoteNumber ?? quote.id ?? '');
   const createdDate = quote.createdAt
     ? new Date(quote.createdAt).toLocaleDateString('es-BO')
@@ -106,7 +177,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text(quoteNumber, pageWidth - marginRight, currentY, { align: 'right' });
   
-  // Línea debajo de N° Cotización
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(pageWidth - marginRight - 60, currentY + 1, pageWidth - marginRight, currentY + 1);
@@ -119,7 +189,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text(createdDate, pageWidth - marginRight, currentY, { align: 'right' });
   
-  // Línea debajo de Fecha
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(pageWidth - marginRight - 60, currentY + 1, pageWidth - marginRight, currentY + 1);
@@ -132,12 +201,10 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text(validDate, pageWidth - marginRight, currentY, { align: 'right' });
   
-  // Línea debajo de Válido hasta
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(pageWidth - marginRight - 60, currentY + 1, pageWidth - marginRight, currentY + 1);
 
-  // ========== CLIENTE ==========
   currentY = 65;
   doc.setTextColor(...primaryBlue);
   doc.setFont('helvetica', 'bold');
@@ -147,12 +214,18 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   const clientName = quote.client?.name ?? 'Cliente';
   doc.text(clientName, marginLeft + 22, currentY);
   
-  // Línea debajo de Cliente
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(marginLeft + 22, currentY + 1, pageWidth - marginRight - 2, currentY + 1);
 
-  // ========== CREADO POR ==========
+  currentY += 6;
+  const clientDocType = (quote.client as any)?.documentType || 'CI';
+  const clientDocNum = (quote.client as any)?.documentNum || (quote.client as any)?.nit || '-';
+  doc.setFontSize(8);
+  doc.setTextColor(100, 100, 100);
+  doc.text(`${clientDocType}: ${clientDocNum}`, marginLeft + 22, currentY);
+  doc.setFontSize(9);
+
   currentY += 8;
   doc.setTextColor(...primaryBlue);
   doc.setFont('helvetica', 'bold');
@@ -162,14 +235,12 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   const creatorName = quote.creator?.fullName || quote.createdBy || 'N/A';
   doc.text(creatorName, marginLeft + 27, currentY);
   
-  // Línea debajo de Creado por
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.3);
   doc.line(marginLeft + 27, currentY + 1, pageWidth - marginRight - 2, currentY + 1);
 
   currentY += 3;
 
-  // ========== DESCRIPCIÓN DEL SERVICIO ==========
   currentY += 5;
   if (quote.generalDescription) {
     doc.setFont('helvetica', 'bold');
@@ -185,34 +256,32 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
     currentY += 5;
   }
 
-  // Línea separadora después de la descripción
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
   doc.line(marginLeft, currentY, pageWidth - marginRight, currentY);
   currentY += 8;
 
-  // Guardar posición inicial para el borde de la sección de tabla y totales
   const tableSectionStartY = currentY;
 
-  // ========== TABLA DE PRODUCTOS/SERVICIOS ==========
   const tableData: any[] = [];
   
   (quote.items ?? []).forEach((item, index) => {
     const quantity = Number(item.quantity ?? 0);
     const unitPrice = Number(item.unitPrice ?? 0);
-    const discount = Number(item.discount ?? 0);
-    const total = quantity * unitPrice * (1 - discount / 100);
+    const discountPercent = Number(item.discount ?? 0);
+    const discountAmount = quantity * unitPrice * (discountPercent / 100);
+    const total = quantity * unitPrice - discountAmount;
 
-    // Fila principal del producto
     tableData.push([
       index + 1,
       item.description ?? '',
+      `PZA`,
       quantity,
-      `${unitPrice.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs`,
-      `${total.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs`
+      `BS ${unitPrice.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`,
+      `- BS ${discountAmount.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`,
+      `BS ${total.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`
     ]);
 
-    // Fila de detalles "Incluye:" si existen
     if (item.details && item.details.length > 0) {
       const detailsText = 'Incluye:\n' + item.details
         .map((d: any) => `• ${typeof d === 'string' ? d : d.description}`)
@@ -232,7 +301,7 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
     startY: currentY,
     margin: { left: marginLeft, right: marginRight },
     tableWidth: contentWidth,
-    head: [['Ítem', 'Descripción', 'Cant.', 'Precio', 'Total']],
+    head: [['ITEM', 'DESCRIPCION', 'UND','CANT.', 'P. UNITARIO','DESCUENTO', 'SUBTOTAL']],
     body: tableData,
     theme: 'grid',
     styles: {
@@ -246,41 +315,59 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
       textColor: 255,
       fontStyle: 'bold',
       halign: 'center',
-      fontSize: 10
+      fontSize: 8
     },
     columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },   // Ítem
-      1: { cellWidth: 104, halign: 'left' },    // Descripción (con incluye)
-      2: { cellWidth: 12, halign: 'center' },   // Cantidad
-      3: { cellWidth: 28, halign: 'right' },    // Precio
-      4: { cellWidth: 28, halign: 'right' }     // Total
+      0: { cellWidth: 13, halign: 'center' },
+      1: { cellWidth: 60, halign: 'left' },
+      2: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 25, halign: 'center' },
+      4: { cellWidth: 25, halign: 'right' },
+      5: { cellWidth: 22, halign: 'right' },
+      6: { cellWidth: 22, halign: 'right' }
     }
   });
 
   currentY = (doc as any).lastAutoTable.finalY;
 
-  // ========== SUBTOTAL Y TOTAL COMO TABLA ==========
   const subtotal = Number(quote.subtotal ?? 0);
+  const discountPercent = Number(quote.discountPercent ?? 0);
+  const discountAmount = Number(quote.discount ?? (subtotal * discountPercent / 100));
   const totalAmount = Number(quote.grandTotal ?? quote.total ?? 0);
+  const hasDiscount = discountPercent > 0 || discountAmount > 0;
   
   const totalsTableData: any[] = [];
   
-  // Fila de Subtotal
   totalsTableData.push([
     '',
     '',
     '',
-    { content: 'Subtotal:', styles: { fontStyle: 'bold', textColor: primaryBlue, halign: 'right' } },
-    { content: `${subtotal.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs`, styles: { halign: 'right' } }
+    '',
+    '',
+    { content: 'Total', styles: { fontStyle: 'bold', textColor: primaryBlue, halign: 'right' } },
+    { content: `BS ${subtotal.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`, styles: { halign: 'right' } }
   ]);
-  
-  // Fila de TOTAL con Son en la misma fila
-  const sonText = quote.observations || '';
+  if (hasDiscount) {
+    const discPctDisplay = discountPercent > 0 
+      ? `${discountPercent.toLocaleString('es-BO', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} %`
+      : `BS ${discountAmount.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`;
+    totalsTableData.push([
+      '',
+      '',
+      '',
+      '',
+      '',
+      { content: 'Descuento', styles: { fontStyle: 'bold', textColor: primaryBlue, halign: 'right' } },
+      { content: discPctDisplay, styles: { halign: 'right', textColor: [220, 50, 50] as [number, number, number] } }
+    ]);
+  }
+
+  const totalEnLetras = numberToWords(totalAmount)
   totalsTableData.push([
-    { content: 'Son:', styles: { fontStyle: 'bold', textColor: primaryBlue } },
-    { content: sonText, colSpan: 2 },
-    { content: 'TOTAL:', styles: { fontStyle: 'bold', textColor: primaryBlue, halign: 'right' } },
-    { content: `${totalAmount.toLocaleString('es-BO', { minimumFractionDigits: 2 })} Bs`, styles: { halign: 'right', fontStyle: 'bold' } }
+    { content: 'SON:', styles: { fontStyle: 'bold', textColor: primaryBlue } },
+    { content: totalEnLetras, colSpan: 4, styles: { fontStyle: 'italic', fontSize: 8 } },
+    { content: 'Total', styles: { fontStyle: 'bold', textColor: primaryBlue, halign: 'right' } },
+    { content: `BS ${totalAmount.toLocaleString('es-BO', { minimumFractionDigits: 2 })}`, styles: { halign: 'right', fontStyle: 'bold' } }
   ]);
 
   autoTable(doc, {
@@ -295,27 +382,26 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
       overflow: 'linebreak',
       valign: 'middle'
     },
-    columnStyles: {
-      0: { cellWidth: 10, halign: 'center' },   // Alineado con Ítem
-      1: { cellWidth: 104, halign: 'left' },    // Alineado con Descripción
-      2: { cellWidth: 12, halign: 'center' },   // Alineado con Cantidad
-      3: { cellWidth: 28, halign: 'right' },    // Alineado con Precio
-      4: { cellWidth: 28, halign: 'right' }     // Alineado con Total
+  columnStyles: {
+      0: { cellWidth: 13, halign: 'center' },
+      1: { cellWidth: 60, halign: 'left' },
+      2: { cellWidth: 16, halign: 'center' },
+      3: { cellWidth: 25, halign: 'right' },
+      4: { cellWidth: 25, halign: 'right' },
+      5: { cellWidth: 22, halign: 'right' },
+      6: { cellWidth: 22, halign: 'right' }
     }
   });
   
   currentY = (doc as any).lastAutoTable.finalY + 8;
 
-  // Línea separadora antes de condiciones
   currentY += 8;
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
   doc.line(marginLeft, currentY, pageWidth - marginRight, currentY);
 
-  // ========== CONDICIONES ==========
   currentY += 8;
 
-  // Título con fondo azul
   doc.setFillColor(...primaryBlue);
   doc.rect(marginLeft, currentY, contentWidth, 8, 'F');
 
@@ -330,23 +416,31 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
 
-  const deliveryTime = quote.deliveryTime ?? '10 días';
+  let validezText = 'N/A';
+  if (quote.validUntil) {
+    const created = quote.createdAt ? new Date(quote.createdAt) : new Date();
+    const validDate = new Date(quote.validUntil);
+    const diffDays = Math.round((validDate.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+    validezText = `${diffDays} día${diffDays !== 1 ? 's' : ''}`;
+  }
+
+  const deliveryTime = quote.deliveryTime || 'Coordinado con el cliente';
   const paymentTypeMap: Record<string, string> = {
     'CONTADO': 'Contra entrega',
+    'CREDITO': 'Crédito',
     'CREDITO_30': 'Crédito 30 días',
     'CREDITO_60': 'Crédito 60 días',
     'CREDITO_90': 'Crédito 90 días'
   };
-  const paymentType = paymentTypeMap[quote.paymentType ?? 'CONTADO'] ?? 'Contra entrega';
+  const paymentType = paymentTypeMap[quote.paymentType ?? 'CONTADO'] ?? quote.paymentType ?? 'Contra entrega';
 
   const defaultTerms = [
     '• Incluye impuestos',
-    `• Validez: ${deliveryTime}`,
+    `• Validez: ${validezText}`,
     `• Forma de pago: ${paymentType}`,
-    '• Tiempo de entrega: Coordinado con el cliente'
+    `• Tiempo de entrega: ${deliveryTime}`
   ];
 
-  // Guardar posición inicial del contenido
   const conditionsStartY = currentY;
 
   currentY += 5;
@@ -367,23 +461,19 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
 
   currentY += 3;
 
-  // Dibujar borde alrededor del contenido de condiciones
   const conditionsHeight = currentY - conditionsStartY;
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
   doc.rect(marginLeft, conditionsStartY, contentWidth, conditionsHeight);
 
-  // ========== FOOTER ==========
   currentY += 8;
   
-  // Línea separadora antes del footer
   doc.setDrawColor(200, 200, 200);
   doc.setLineWidth(0.5);
   doc.line(marginLeft, currentY, pageWidth - marginRight, currentY);
   
   currentY += 8;
   
-  // Verificar si hay espacio suficiente, si no, agregar nueva página
   if (currentY > pageHeight - 30) {
     doc.addPage();
     currentY = 20;
@@ -394,7 +484,6 @@ export function generateQuotePDF({ quote }: PDFOptions): void {
   doc.setFont('helvetica', 'normal');
   doc.text('Si tiene algún otro problema consulte con nuestros soportes.', pageWidth / 2, currentY, { align: 'center' });
 
-  // ========== GUARDAR PDF ==========
   const fileName = `Cotizacion_${quoteNumber}_${clientName.replace(/\s+/g, '_')}.pdf`;
 
   doc.save(fileName);

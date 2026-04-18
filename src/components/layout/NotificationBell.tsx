@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Bell, CheckCheck, Package, AlertTriangle, Eye, ExternalLink } from 'lucide-react'
 import { inventoryService } from '@/lib/services'
+import { useAuth } from '@/hooks/useAuth'
 import { useRouter } from 'next/navigation'
 
 interface StockAlert {
@@ -14,21 +15,27 @@ interface StockAlert {
   read: boolean
 }
 
-const DISMISSED_KEY = 'ss_dismissed_stock_alerts'
+const DISMISSED_PREFIX = 'ss_dismissed_stock_alerts'
 
-function getDismissed(): Set<string> {
+function getDismissedKey(userId: string) {
+  return `${DISMISSED_PREFIX}_${userId}`
+}
+
+function getDismissed(userId: string): Set<string> {
   try {
-    const raw = localStorage.getItem(DISMISSED_KEY)
+    const raw = localStorage.getItem(getDismissedKey(userId))
     return raw ? new Set(JSON.parse(raw)) : new Set()
   } catch { return new Set() }
 }
 
-function saveDismissed(set: Set<string>) {
-  localStorage.setItem(DISMISSED_KEY, JSON.stringify(Array.from(set)))
+function saveDismissed(userId: string, set: Set<string>) {
+  localStorage.setItem(getDismissedKey(userId), JSON.stringify(Array.from(set)))
 }
 
 export function NotificationBell() {
   const router = useRouter()
+  const { user } = useAuth()
+  const userId = String(user?.id || user?.userId || 'default')
   const [open, setOpen] = useState(false)
   const [alerts, setAlerts] = useState<StockAlert[]>([])
   const [loading, setLoading] = useState(false)
@@ -37,7 +44,7 @@ export function NotificationBell() {
   const fetchStockAlerts = useCallback(async () => {
     setLoading(true)
     try {
-      const dismissed = getDismissed()
+      const dismissed = getDismissed(userId)
       let lowStockItems: StockAlert[] = []
 
       // Try /inventory/low-stock first
@@ -88,7 +95,7 @@ export function NotificationBell() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [userId])
 
   // Fetch on mount and every 60s
   useEffect(() => {
@@ -117,24 +124,24 @@ export function NotificationBell() {
 
   const handleDismiss = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const dismissed = getDismissed()
+    const dismissed = getDismissed(userId)
     dismissed.add(id)
-    saveDismissed(dismissed)
+    saveDismissed(userId, dismissed)
     setAlerts(prev => prev.map(a => a.id === id ? { ...a, read: true } : a))
   }
 
   const handleDismissAll = () => {
-    const dismissed = getDismissed()
+    const dismissed = getDismissed(userId)
     alerts.forEach(a => dismissed.add(a.id))
-    saveDismissed(dismissed)
+    saveDismissed(userId, dismissed)
     setAlerts(prev => prev.map(a => ({ ...a, read: true })))
   }
 
   const handleAlertClick = (alert: StockAlert) => {
     if (!alert.read) {
-      const dismissed = getDismissed()
+      const dismissed = getDismissed(userId)
       dismissed.add(alert.id)
-      saveDismissed(dismissed)
+      saveDismissed(userId, dismissed)
       setAlerts(prev => prev.map(a => a.id === alert.id ? { ...a, read: true } : a))
     }
     setOpen(false)

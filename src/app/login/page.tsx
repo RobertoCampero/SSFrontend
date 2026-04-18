@@ -45,15 +45,15 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center bg-gray-50 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           {/* Logo */}
-          <div className="flex justify-start">
-            <Image 
-              src="/logo2.png" 
-              alt="Smart Services Logo" 
-              width={180}
-              height={60}
-              className="object-contain"
-            />
-          </div>
+<div className="flex justify-start">
+  <Image 
+    src="/logo.svg" 
+    alt="Smart Services Logo" 
+    width={300}
+    height={100}
+    className="object-contain"
+  />
+</div>
 
           {/* Título */}
           <div>

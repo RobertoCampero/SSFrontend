@@ -15,7 +15,7 @@ export default function ClientsPage() {
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [editing, setEditing] = useState<Client | null>(null)
   const [deleting, setDeleting] = useState<Client | null>(null)
-  const [form, setForm] = useState<{ name: string; documentType: string; documentNum: string; email: string; phone: string; address: string; clientType: 'REGULAR' | 'PREFERENCIAL' }>({ name: '', documentType: 'RUT', documentNum: '', email: '', phone: '', address: '', clientType: 'REGULAR' })
+  const [form, setForm] = useState<{ name: string; documentType: string; documentNum: string; email: string; phone: string; address: string; clientType: 'REGULAR' | 'PREFERENCIAL' }>({ name: '', documentType: 'CI', documentNum: '', email: '', phone: '', address: '', clientType: 'REGULAR' })
 
   useEffect(() => {
     loadClients()
@@ -38,7 +38,7 @@ export default function ClientsPage() {
     { key: 'id', label: 'ID', sortable: true, className: 'w-16' },
     { key: 'name', label: 'Nombre', sortable: true },
     { key: 'documentNum', label: 'Documento', sortable: true, render: (item) => (
-      <span>{(item as any).documentType || 'RUT'}: {(item as any).documentNum || item.rut}</span>
+      <span>{(item as any).documentType || 'CI'}: {(item as any).documentNum || item.rut}</span>
     ) },
     { key: 'email', label: 'Email', sortable: true },
     { key: 'phone', label: 'Teléfono' },
@@ -51,7 +51,7 @@ export default function ClientsPage() {
 
   const openAdd = () => { 
     setEditing(null); 
-    setForm({ name: '', documentType: 'RUT', documentNum: '', email: '', phone: '', address: '', clientType: 'REGULAR' }); 
+    setForm({ name: '', documentType: 'CI', documentNum: '', email: '', phone: '', address: '', clientType: 'REGULAR' }); 
     setModalOpen(true) 
   }
   
@@ -59,7 +59,7 @@ export default function ClientsPage() {
     setEditing(item); 
     setForm({ 
       name: item.name, 
-      documentType: (item as any).documentType || 'RUT',
+      documentType: (item as any).documentType || 'CI',
       documentNum: (item as any).documentNum || item.rut || '', 
       email: item.email || '', 
       phone: item.phone || '', 
@@ -125,7 +125,7 @@ export default function ClientsPage() {
               onChange={(e: ChangeEvent<HTMLSelectElement>) => setForm({ ...form, documentType: e.target.value })}
             >
               <option value="CI">CEDULA DE IDENTIDAD</option>
-              <option value="OTHER">Otro</option>
+              <option value="NIT">NIT</option>
             </select>
           </div>
           <div>

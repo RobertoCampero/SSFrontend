@@ -10,7 +10,7 @@ import { quotesService, clientsService, inventoryService, productsService } from
 import type { Quote, Client, QuoteItem, CostType, Warehouse } from '@/lib/types'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/contexts/ToastContext'
-import { Plus, Trash2, ChevronDown, ChevronUp, FileDown, CheckCircle } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronUp, FileDown, CheckCircle, AlertCircle } from 'lucide-react'
 import { generateQuotePDF } from '@/lib/utils/pdf-generator'
 
 const statusColors: Record<string, string> = {
@@ -66,6 +66,7 @@ export default function QuotesPageNew() {
   const [stockWarnings, setStockWarnings] = useState<{[key: number]: {available: number, required: number, productName: string}}>({})
   const [filterQuoteType, setFilterQuoteType] = useState<'ALL' | 'PRODUCTOS' | 'SERVICIOS'>('ALL')
   const [filterStatus, setFilterStatus] = useState<string>('ALL')
+  const [filterValidity, setFilterValidity] = useState<'ALL' | 'VIGENTES' | 'VENCIDAS'>('ALL')
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set())
 
   const [form, setForm] = useState<{
@@ -203,7 +204,44 @@ export default function QuotesPageNew() {
         </span>
       )
     },
-    { key: 'validUntil', label: 'Válida hasta' },
+    {
+      key: 'createdAt',
+      label: 'Fecha Creación',
+      sortable: true,
+      render: (item) => {
+        if (!item.createdAt && !item.issueDate) return <span className="text-gray-400">-</span>
+        const dateStr = item.issueDate || item.createdAt
+        const date = new Date(dateStr!)
+        const formattedDate = date.toISOString().split('T')[0]
+        return <span className="text-sm">{formattedDate}</span>
+      }
+    },
+    { 
+      key: 'validUntil', 
+      label: 'Válida hasta',
+      render: (item) => {
+        if (!item.validUntil) return <span className="text-gray-400">-</span>
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const validUntilDate = new Date(item.validUntil)
+        validUntilDate.setHours(0, 0, 0, 0)
+        const isExpired = validUntilDate < today
+        
+        // Formatear fecha solo año-mes-día
+        const formattedDate = item.validUntil.split('T')[0]
+        
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-sm">{formattedDate}</span>
+            {isExpired ? (
+              <span className="badge-red text-xs">Vencida</span>
+            ) : (
+              <span className="badge-green text-xs">Vigente</span>
+            )}
+          </div>
+        )
+      }
+    },
     {
       key: 'actions',
       label: 'Acciones',
@@ -573,14 +611,53 @@ export default function QuotesPageNew() {
   if (loading) return <div className="p-8">Cargando...</div>
   if (error) return <div className="p-8 text-red-600">Error: {error}</div>
 
+  // Función para verificar si una cotización está vencida
+  const isQuoteExpired = (quote: Quote): boolean => {
+    if (!quote.validUntil) return false
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const validUntilDate = new Date(quote.validUntil)
+    validUntilDate.setHours(0, 0, 0, 0)
+    return validUntilDate < today
+  }
+
+  // Contar cotizaciones vencidas
+  const expiredCount = data.filter(quote => isQuoteExpired(quote)).length
+  const activeCount = data.filter(quote => !isQuoteExpired(quote)).length
+
   const filteredData = data.filter((quote: Quote) => {
     if (filterQuoteType !== 'ALL' && quote.quoteType !== filterQuoteType) return false
     if (filterStatus !== 'ALL' && quote.status !== filterStatus) return false
+    
+    // Filtro de vigencia
+    if (filterValidity !== 'ALL') {
+      const isExpired = isQuoteExpired(quote)
+      if (filterValidity === 'VENCIDAS' && !isExpired) return false
+      if (filterValidity === 'VIGENTES' && isExpired) return false
+    }
+    
     return true
   })
 
   return (
     <>
+      {expiredCount > 0 && (
+        <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center gap-2 text-yellow-800">
+            <AlertCircle size={20} />
+            <span className="font-semibold">
+              Tienes {expiredCount} cotización{expiredCount !== 1 ? 'es' : ''} vencida{expiredCount !== 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={() => setFilterValidity('VENCIDAS')}
+              className="ml-auto px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700 text-sm"
+            >
+              Ver cotizaciones vencidas
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="mb-4 flex gap-4">
         <div className="flex-1">
           <label htmlFor="filter_quote_type" className="label text-xs">Tipo de Cotización</label>
@@ -610,6 +687,20 @@ export default function QuotesPageNew() {
             <option value="APROBADA">Aprobada</option>
             <option value="RECHAZADA">Rechazada</option>
             <option value="VENCIDA">Vencida</option>
+          </select>
+        </div>
+
+        <div className="flex-1">
+          <label htmlFor="filter_validity" className="label text-xs">Vigencia</label>
+          <select
+            id="filter_validity"
+            value={filterValidity}
+            onChange={(e) => setFilterValidity(e.target.value as 'ALL' | 'VIGENTES' | 'VENCIDAS')}
+            className="input"
+          >
+            <option value="ALL">Todas ({data.length})</option>
+            <option value="VIGENTES">Vigentes ({activeCount})</option>
+            <option value="VENCIDAS">Vencidas ({expiredCount})</option>
           </select>
         </div>
       </div>
